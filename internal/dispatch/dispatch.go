@@ -1,4 +1,5 @@
 // Package dispatch 负责按模型选择上游渠道：优先级分组 + 组内加权随机 + 故障转移 + 熔断。
+// 支持渠道运行时 CRUD（供管理 API 使用）。
 package dispatch
 
 import (
@@ -19,11 +20,27 @@ const (
 	defaultBreakerCooldown  = 30 * time.Second
 )
 
+// ChannelInfo 是渠道的只读快照（用于管理 API 展示）。
+type ChannelInfo struct {
+	Name     string   `json:"name"`
+	Adaptor  string   `json:"adaptor"`
+	BaseURL  string   `json:"base_url"`
+	Models   []string `json:"models"`
+	Weight   int      `json:"weight"`
+	Priority int      `json:"priority"`
+}
+
+type channelMeta struct {
+	ch     *adaptor.Channel
+	models []string
+}
+
 // Dispatcher 维护模型到渠道的映射并执行渠道选择与熔断。
 type Dispatcher struct {
-	mu      sync.RWMutex
-	byModel map[string][]*adaptor.Channel
-	breaker *breaker
+	mu       sync.RWMutex
+	byModel  map[string][]*adaptor.Channel
+	channels map[string]*channelMeta
+	breaker  *breaker
 }
 
 // Option 配置 Dispatcher。
@@ -44,31 +61,94 @@ func WithBreaker(threshold int, cooldown time.Duration) Option {
 
 // New 从配置构建调度器（仅纳入已启用渠道）。
 func New(channels []config.ChannelConfig, opts ...Option) *Dispatcher {
-	byModel := make(map[string][]*adaptor.Channel)
+	d := &Dispatcher{
+		byModel:  make(map[string][]*adaptor.Channel),
+		channels: make(map[string]*channelMeta),
+		breaker:  newBreaker(defaultBreakerThreshold, defaultBreakerCooldown),
+	}
 	for _, cc := range channels {
 		if !cc.Enabled {
 			continue
 		}
-		ch := &adaptor.Channel{
-			Name:     cc.Name,
-			Adaptor:  cc.Adaptor,
-			BaseURL:  cc.BaseURL,
-			APIKey:   cc.APIKey,
-			Weight:   max(cc.Weight, 1),
-			Priority: cc.Priority,
-		}
-		for _, m := range cc.Models {
-			byModel[m] = append(byModel[m], ch)
-		}
-	}
-	d := &Dispatcher{
-		byModel: byModel,
-		breaker: newBreaker(defaultBreakerThreshold, defaultBreakerCooldown),
+		d.addLocked(cc)
 	}
 	for _, o := range opts {
 		o(d)
 	}
 	return d
+}
+
+// addLocked 在持锁（或构造期）下添加渠道。
+func (d *Dispatcher) addLocked(cc config.ChannelConfig) {
+	ch := &adaptor.Channel{
+		Name:     cc.Name,
+		Adaptor:  cc.Adaptor,
+		BaseURL:  cc.BaseURL,
+		APIKey:   cc.APIKey,
+		Weight:   max(cc.Weight, 1),
+		Priority: cc.Priority,
+	}
+	d.channels[cc.Name] = &channelMeta{ch: ch, models: cc.Models}
+	for _, m := range cc.Models {
+		d.byModel[m] = append(d.byModel[m], ch)
+	}
+}
+
+// Add 运行时新增渠道（同名先移除再添加）。
+func (d *Dispatcher) Add(cc config.ChannelConfig) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if _, ok := d.channels[cc.Name]; ok {
+		d.removeLocked(cc.Name)
+	}
+	d.addLocked(cc)
+}
+
+// Remove 运行时移除渠道；返回是否存在。
+func (d *Dispatcher) Remove(name string) bool {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	return d.removeLocked(name)
+}
+
+func (d *Dispatcher) removeLocked(name string) bool {
+	meta, ok := d.channels[name]
+	if !ok {
+		return false
+	}
+	delete(d.channels, name)
+	for _, m := range meta.models {
+		var filtered []*adaptor.Channel
+		for _, ch := range d.byModel[m] {
+			if ch.Name != name {
+				filtered = append(filtered, ch)
+			}
+		}
+		if len(filtered) == 0 {
+			delete(d.byModel, m)
+		} else {
+			d.byModel[m] = filtered
+		}
+	}
+	return true
+}
+
+// List 返回所有渠道的只读快照。
+func (d *Dispatcher) List() []ChannelInfo {
+	d.mu.RLock()
+	defer d.mu.RUnlock()
+	out := make([]ChannelInfo, 0, len(d.channels))
+	for _, meta := range d.channels {
+		out = append(out, ChannelInfo{
+			Name:     meta.ch.Name,
+			Adaptor:  meta.ch.Adaptor,
+			BaseURL:  meta.ch.BaseURL,
+			Models:   meta.models,
+			Weight:   meta.ch.Weight,
+			Priority: meta.ch.Priority,
+		})
+	}
+	return out
 }
 
 // RecordResult 上报某渠道一次调用的成败，驱动熔断状态。

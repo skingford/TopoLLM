@@ -11,12 +11,14 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"go.uber.org/zap"
 
+	"github.com/kingford/TopoLLM/internal/admin"
 	"github.com/kingford/TopoLLM/internal/billing"
 	"github.com/kingford/TopoLLM/internal/config"
 	"github.com/kingford/TopoLLM/internal/dispatch"
 	"github.com/kingford/TopoLLM/internal/gateway"
 	"github.com/kingford/TopoLLM/internal/middleware"
 	"github.com/kingford/TopoLLM/internal/plugin"
+	"github.com/kingford/TopoLLM/internal/security"
 )
 
 // Server 封装 HTTP 服务与其依赖。
@@ -65,6 +67,14 @@ func (s *Server) registerRoutes(e *gin.Engine, d *dispatch.Dispatcher, bill *bil
 		c.JSON(http.StatusOK, gin.H{"object": "list", "data": []any{}})
 	})
 	v1.POST("/chat/completions", gateway.ChatCompletions(d, bill, chain, s.log))
+
+	// 运维管理 API（admin 令牌保护，含 SSRF 出口防护）。
+	if s.cfg.Admin.Enabled {
+		guard := security.NewEgressGuard(s.cfg.Admin.AllowPrivateUpstreams, s.cfg.Admin.AllowedUpstreamHosts)
+		adminGroup := e.Group("/admin")
+		adminGroup.Use(middleware.Auth(config.AuthConfig{Enabled: true, Tokens: []string{s.cfg.Admin.Token}}))
+		admin.New(d, guard, s.log).Register(adminGroup)
+	}
 }
 
 // Run 启动服务并阻塞，直至 ctx 取消后优雅关闭。

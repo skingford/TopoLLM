@@ -47,6 +47,13 @@ billing:
   quotas: {}
     # "sk-your-gateway-token": 100.0
 
+# 运维管理 API（/admin，需 admin 令牌；含 SSRF 出口防护）。
+admin:
+  enabled: false
+  token: ""                       # 管理接口 Bearer 令牌（enabled 时必填）
+  allow_private_upstreams: false  # 是否允许内网上游（自托管 vLLM/Ollama 时设 true）
+  allowed_upstream_hosts: []      # SSRF 白名单主机（精确匹配）
+
 # 请求前置插件（按 priority 降序执行，可短路拒绝）。内置：sensitive_words、audit。
 plugins: []
   # - name: audit

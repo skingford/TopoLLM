@@ -18,6 +18,7 @@ type Config struct {
 	RateLimit      RateLimitConfig      `mapstructure:"rate_limit"`
 	CircuitBreaker CircuitBreakerConfig `mapstructure:"circuit_breaker"`
 	Billing        BillingConfig        `mapstructure:"billing"`
+	Admin          AdminConfig          `mapstructure:"admin"`
 	Plugins        []PluginConfig       `mapstructure:"plugins"`
 	Channels       []ChannelConfig      `mapstructure:"channels"`
 }
@@ -80,6 +81,14 @@ type BillingConfig struct {
 	Quotas  map[string]float64 `mapstructure:"quotas"`  // token -> 总额度
 }
 
+// AdminConfig 控制运维管理 API（渠道运行时 CRUD）。
+type AdminConfig struct {
+	Enabled               bool     `mapstructure:"enabled"`
+	Token                 string   `mapstructure:"token"`                   // 管理接口 Bearer 令牌
+	AllowPrivateUpstreams bool     `mapstructure:"allow_private_upstreams"` // 允许内网上游（自托管场景）
+	AllowedUpstreamHosts  []string `mapstructure:"allowed_upstream_hosts"`  // SSRF 白名单主机
+}
+
 // PluginConfig 描述一个请求前置插件的启用与配置。
 type PluginConfig struct {
 	Name     string         `mapstructure:"name"`
@@ -90,14 +99,14 @@ type PluginConfig struct {
 
 // ChannelConfig 描述一个上游供应商实例（数据驱动，支持自定义供应商）。
 type ChannelConfig struct {
-	Name     string   `mapstructure:"name"`
-	Adaptor  string   `mapstructure:"adaptor"`  // openai | claude | gemini | ...
-	BaseURL  string   `mapstructure:"base_url"`
-	APIKey   string   `mapstructure:"api_key"`
-	Models   []string `mapstructure:"models"` // 该渠道对外暴露的模型名
-	Weight   int      `mapstructure:"weight"`
-	Priority int      `mapstructure:"priority"`
-	Enabled  bool     `mapstructure:"enabled"`
+	Name     string   `mapstructure:"name" json:"name"`
+	Adaptor  string   `mapstructure:"adaptor" json:"adaptor"` // openai | claude | gemini | ...
+	BaseURL  string   `mapstructure:"base_url" json:"base_url"`
+	APIKey   string   `mapstructure:"api_key" json:"api_key"`
+	Models   []string `mapstructure:"models" json:"models"` // 该渠道对外暴露的模型名
+	Weight   int      `mapstructure:"weight" json:"weight"`
+	Priority int      `mapstructure:"priority" json:"priority"`
+	Enabled  bool     `mapstructure:"enabled" json:"enabled"`
 }
 
 // Load 从给定路径加载配置，并以环境变量覆盖（前缀 TOPOLLM_，点替换为下划线）。
@@ -145,6 +154,7 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("circuit_breaker.threshold", 5)
 	v.SetDefault("circuit_breaker.cooldown_seconds", 30)
 	v.SetDefault("billing.enabled", false)
+	v.SetDefault("admin.enabled", false)
 }
 
 func (c *Config) validate() error {
@@ -159,6 +169,9 @@ func (c *Config) validate() error {
 	}
 	if c.RateLimit.Enabled && c.RateLimit.RPM <= 0 {
 		return fmt.Errorf("rate_limit.enabled but rate_limit.rpm <= 0")
+	}
+	if c.Admin.Enabled && c.Admin.Token == "" {
+		return fmt.Errorf("admin.enabled but admin.token is empty")
 	}
 	return nil
 }

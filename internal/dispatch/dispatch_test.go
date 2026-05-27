@@ -89,3 +89,34 @@ func TestBreaker_RecoversOnSuccess(t *testing.T) {
 		t.Errorf("c1 should recover after success, got %s", ch.Name)
 	}
 }
+
+func TestAddRemoveList(t *testing.T) {
+	d := New(nil)
+	d.Add(config.ChannelConfig{Name: "x", Adaptor: "openai", BaseURL: "http://h/v1", Models: []string{"m"}, Enabled: true})
+	if len(d.List()) != 1 {
+		t.Fatalf("list len = %d, want 1", len(d.List()))
+	}
+	ch, err := d.Select("m", nil)
+	if err != nil || ch.Name != "x" {
+		t.Errorf("select after add: ch=%v err=%v", ch, err)
+	}
+
+	if !d.Remove("x") {
+		t.Error("Remove should return true for existing channel")
+	}
+	if _, err := d.Select("m", nil); err == nil {
+		t.Error("select after remove should fail")
+	}
+	if len(d.List()) != 0 {
+		t.Errorf("list len after remove = %d, want 0", len(d.List()))
+	}
+}
+
+func TestAdd_ReplacesSameName(t *testing.T) {
+	d := New(nil)
+	d.Add(config.ChannelConfig{Name: "x", Adaptor: "openai", BaseURL: "http://a/v1", Models: []string{"m"}, Enabled: true})
+	d.Add(config.ChannelConfig{Name: "x", Adaptor: "openai", BaseURL: "http://b/v1", Models: []string{"m"}, Enabled: true})
+	if len(d.List()) != 1 {
+		t.Errorf("same-name add should replace, list = %d", len(d.List()))
+	}
+}
