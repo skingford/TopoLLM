@@ -37,6 +37,11 @@ circuit_breaker:
   threshold: 5
   cooldown_seconds: 30
 
+# 渠道主动健康探测：周期性探测各渠道连通性，失败反馈到熔断器。
+health_check:
+  enabled: false
+  interval_seconds: 60
+
 # 计费与配额。enabled=false 时仅记录用量、不强制配额。
 # pricing：每百万 token 价格，"default" 为兜底。quotas：每令牌总额度（缺省不限）。
 billing:

@@ -17,6 +17,7 @@ type Config struct {
 	Auth           AuthConfig           `mapstructure:"auth"`
 	RateLimit      RateLimitConfig      `mapstructure:"rate_limit"`
 	CircuitBreaker CircuitBreakerConfig `mapstructure:"circuit_breaker"`
+	HealthCheck    HealthCheckConfig    `mapstructure:"health_check"`
 	Billing        BillingConfig        `mapstructure:"billing"`
 	Admin          AdminConfig          `mapstructure:"admin"`
 	Plugins        []PluginConfig       `mapstructure:"plugins"`
@@ -66,6 +67,12 @@ type RateLimitConfig struct {
 type CircuitBreakerConfig struct {
 	Threshold       int `mapstructure:"threshold"`        // 触发熔断的连续失败数
 	CooldownSeconds int `mapstructure:"cooldown_seconds"` // 熔断冷却时长（秒）
+}
+
+// HealthCheckConfig 控制渠道主动健康探测后台任务。
+type HealthCheckConfig struct {
+	Enabled         bool `mapstructure:"enabled"`
+	IntervalSeconds int  `mapstructure:"interval_seconds"`
 }
 
 // Price 是某模型的单价（每百万 token）。
@@ -155,6 +162,7 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("rate_limit.rpm", 60)
 	v.SetDefault("circuit_breaker.threshold", 5)
 	v.SetDefault("circuit_breaker.cooldown_seconds", 30)
+	v.SetDefault("health_check.interval_seconds", 60)
 	v.SetDefault("billing.enabled", false)
 	v.SetDefault("admin.enabled", false)
 }

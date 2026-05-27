@@ -18,6 +18,7 @@ import (
 	"github.com/kingford/TopoLLM/internal/plugin"
 	"github.com/kingford/TopoLLM/internal/server"
 	"github.com/kingford/TopoLLM/internal/store"
+	"github.com/kingford/TopoLLM/internal/task"
 
 	// 注册内置适配器与插件（通过 init() 自注册）。
 	_ "github.com/kingford/TopoLLM/internal/adaptor/anthropic"
@@ -65,6 +66,11 @@ func main() {
 	chain, err := plugin.BuildChain(cfg.Plugins, log)
 	if err != nil {
 		log.Sugar().Fatalf("build plugin chain: %v", err)
+	}
+
+	if cfg.HealthCheck.Enabled {
+		hc := task.NewHealthChecker(disp, time.Duration(cfg.HealthCheck.IntervalSeconds)*time.Second, log)
+		go hc.Run(ctx)
 	}
 	log.Info("gateway initialized",
 		zap.Int("channels", len(cfg.Channels)),
