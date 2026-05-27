@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"go.uber.org/zap"
 
 	"github.com/kingford/TopoLLM/internal/config"
@@ -30,6 +31,7 @@ func New(cfg *config.Config, log *zap.Logger, d *dispatch.Dispatcher) *Server {
 	engine.Use(
 		middleware.RequestID(),
 		middleware.Logger(log),
+		middleware.Metrics(),
 		middleware.Recovery(log),
 		middleware.CORS(),
 	)
@@ -51,6 +53,7 @@ func (s *Server) registerRoutes(e *gin.Engine, d *dispatch.Dispatcher) {
 	e.GET("/healthz", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"status": "ok"})
 	})
+	e.GET("/metrics", gin.WrapH(promhttp.Handler()))
 
 	// 对外 OpenAI 兼容端点：鉴权 + 限流。
 	v1 := e.Group("/v1")

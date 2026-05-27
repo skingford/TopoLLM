@@ -13,6 +13,7 @@ import (
 
 	"github.com/kingford/TopoLLM/internal/adaptor"
 	"github.com/kingford/TopoLLM/internal/dispatch"
+	"github.com/kingford/TopoLLM/internal/observability"
 	"github.com/kingford/TopoLLM/internal/relay"
 )
 
@@ -90,14 +91,26 @@ func ChatCompletions(d *dispatch.Dispatcher, log *zap.Logger) gin.HandlerFunc {
 			usage, err := ad.RelayResponse(c.Writer, resp, head.Stream)
 			if err != nil {
 				log.Error("relay response failed", zap.String("channel", ch.Name), zap.Error(err))
+				observability.RelayRequests.WithLabelValues(ch.Name, head.Model, "error").Inc()
 				return
 			}
 			logUsage(log, c, ch, head.Model, usage, time.Since(start))
+			observability.RelayRequests.WithLabelValues(ch.Name, head.Model, "success").Inc()
+			recordTokens(ch.Name, head.Model, usage)
 			return
 		}
 
+		observability.RelayRequests.WithLabelValues("none", head.Model, "failed").Inc()
 		writeError(c, http.StatusBadGateway, "all upstream channels failed for model: "+head.Model)
 	}
+}
+
+func recordTokens(channel, model string, usage *relay.Usage) {
+	if usage == nil {
+		return
+	}
+	observability.RelayTokens.WithLabelValues(channel, model, "prompt").Add(float64(usage.PromptTokens))
+	observability.RelayTokens.WithLabelValues(channel, model, "completion").Add(float64(usage.CompletionTokens))
 }
 
 func logUsage(log *zap.Logger, c *gin.Context, ch *adaptor.Channel, model string, usage *relay.Usage, latency time.Duration) {

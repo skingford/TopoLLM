@@ -2,6 +2,7 @@ package middleware
 
 import (
 	"net/http"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -11,6 +12,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/kingford/TopoLLM/internal/config"
+	"github.com/kingford/TopoLLM/internal/observability"
 )
 
 // RequestIDHeader 是请求 ID 的响应/请求头名称。
@@ -44,6 +46,20 @@ func Logger(log *zap.Logger) gin.HandlerFunc {
 			zap.Int("status", c.Writer.Status()),
 			zap.Duration("latency", time.Since(start)),
 		)
+	}
+}
+
+// Metrics 记录 Prometheus HTTP 指标（按路由模板，避免高基数）。
+func Metrics() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		start := time.Now()
+		c.Next()
+		path := c.FullPath()
+		if path == "" {
+			path = "unmatched"
+		}
+		observability.HTTPRequests.WithLabelValues(c.Request.Method, path, strconv.Itoa(c.Writer.Status())).Inc()
+		observability.HTTPDuration.WithLabelValues(c.Request.Method, path).Observe(time.Since(start).Seconds())
 	}
 }
 
