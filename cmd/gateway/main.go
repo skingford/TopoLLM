@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"go.uber.org/zap"
 
@@ -51,7 +52,10 @@ func main() {
 	}
 	defer func() { _ = st.Close() }()
 
-	disp := dispatch.New(cfg.Channels)
+	disp := dispatch.New(cfg.Channels, dispatch.WithBreaker(
+		cfg.CircuitBreaker.Threshold,
+		time.Duration(cfg.CircuitBreaker.CooldownSeconds)*time.Second,
+	))
 	log.Info("dispatcher initialized", zap.Int("channels", len(cfg.Channels)))
 
 	srv := server.New(cfg, log, disp)

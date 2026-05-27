@@ -1,10 +1,11 @@
-// Package dispatch 负责按模型选择上游渠道：优先级分组 + 组内加权随机 + 故障转移支持。
+// Package dispatch 负责按模型选择上游渠道：优先级分组 + 组内加权随机 + 故障转移 + 熔断。
 package dispatch
 
 import (
 	"errors"
 	"math/rand"
 	"sync"
+	"time"
 
 	"github.com/kingford/TopoLLM/internal/adaptor"
 	"github.com/kingford/TopoLLM/internal/config"
@@ -13,14 +14,36 @@ import (
 // ErrNoChannel 表示该模型没有可用渠道。
 var ErrNoChannel = errors.New("no available channel for model")
 
-// Dispatcher 维护模型到渠道的映射并执行渠道选择。
+const (
+	defaultBreakerThreshold = 5
+	defaultBreakerCooldown  = 30 * time.Second
+)
+
+// Dispatcher 维护模型到渠道的映射并执行渠道选择与熔断。
 type Dispatcher struct {
 	mu      sync.RWMutex
 	byModel map[string][]*adaptor.Channel
+	breaker *breaker
+}
+
+// Option 配置 Dispatcher。
+type Option func(*Dispatcher)
+
+// WithBreaker 配置熔断阈值（连续失败数）与冷却时长。
+func WithBreaker(threshold int, cooldown time.Duration) Option {
+	return func(d *Dispatcher) {
+		if threshold <= 0 {
+			threshold = defaultBreakerThreshold
+		}
+		if cooldown <= 0 {
+			cooldown = defaultBreakerCooldown
+		}
+		d.breaker = newBreaker(threshold, cooldown)
+	}
 }
 
 // New 从配置构建调度器（仅纳入已启用渠道）。
-func New(channels []config.ChannelConfig) *Dispatcher {
+func New(channels []config.ChannelConfig, opts ...Option) *Dispatcher {
 	byModel := make(map[string][]*adaptor.Channel)
 	for _, cc := range channels {
 		if !cc.Enabled {
@@ -38,11 +61,23 @@ func New(channels []config.ChannelConfig) *Dispatcher {
 			byModel[m] = append(byModel[m], ch)
 		}
 	}
-	return &Dispatcher{byModel: byModel}
+	d := &Dispatcher{
+		byModel: byModel,
+		breaker: newBreaker(defaultBreakerThreshold, defaultBreakerCooldown),
+	}
+	for _, o := range opts {
+		o(d)
+	}
+	return d
+}
+
+// RecordResult 上报某渠道一次调用的成败，驱动熔断状态。
+func (d *Dispatcher) RecordResult(channel string, ok bool) {
+	d.breaker.record(channel, ok)
 }
 
 // Select 返回某模型的一个可用渠道：取最高优先级分组，组内按权重随机。
-// excluded 用于故障转移时跳过已尝试过的渠道（按渠道名）。
+// 跳过 excluded（故障转移）与熔断打开的渠道。
 func (d *Dispatcher) Select(model string, excluded map[string]bool) (*adaptor.Channel, error) {
 	d.mu.RLock()
 	defer d.mu.RUnlock()
@@ -52,10 +87,14 @@ func (d *Dispatcher) Select(model string, excluded map[string]bool) (*adaptor.Ch
 		return nil, ErrNoChannel
 	}
 
+	available := func(ch *adaptor.Channel) bool {
+		return !excluded[ch.Name] && d.breaker.allow(ch.Name)
+	}
+
 	highest := 0
 	found := false
 	for _, ch := range candidates {
-		if excluded[ch.Name] {
+		if !available(ch) {
 			continue
 		}
 		if !found || ch.Priority > highest {
@@ -70,7 +109,7 @@ func (d *Dispatcher) Select(model string, excluded map[string]bool) (*adaptor.Ch
 	var group []*adaptor.Channel
 	total := 0
 	for _, ch := range candidates {
-		if excluded[ch.Name] || ch.Priority != highest {
+		if !available(ch) || ch.Priority != highest {
 			continue
 		}
 		group = append(group, ch)
@@ -88,4 +127,57 @@ func (d *Dispatcher) Select(model string, excluded map[string]bool) (*adaptor.Ch
 		}
 	}
 	return group[len(group)-1], nil
+}
+
+// ---- 被动熔断器 ----
+
+type breakerEntry struct {
+	failures  int
+	openUntil time.Time
+}
+
+type breaker struct {
+	mu        sync.Mutex
+	threshold int
+	cooldown  time.Duration
+	entries   map[string]*breakerEntry
+}
+
+func newBreaker(threshold int, cooldown time.Duration) *breaker {
+	return &breaker{
+		threshold: threshold,
+		cooldown:  cooldown,
+		entries:   make(map[string]*breakerEntry),
+	}
+}
+
+// allow 判断渠道当前是否可用：熔断打开且未过冷却期则不可用；冷却结束后半开放行试探。
+func (b *breaker) allow(name string) bool {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	e, ok := b.entries[name]
+	if !ok || e.openUntil.IsZero() {
+		return true
+	}
+	return time.Now().After(e.openUntil)
+}
+
+// record 上报成败：成功重置；失败累计达阈值则打开熔断并进入冷却。
+func (b *breaker) record(name string, ok bool) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	e := b.entries[name]
+	if e == nil {
+		e = &breakerEntry{}
+		b.entries[name] = e
+	}
+	if ok {
+		e.failures = 0
+		e.openUntil = time.Time{}
+		return
+	}
+	e.failures++
+	if e.failures >= b.threshold {
+		e.openUntil = time.Now().Add(b.cooldown)
+	}
 }

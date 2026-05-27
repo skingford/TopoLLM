@@ -75,6 +75,7 @@ func ChatCompletions(d *dispatch.Dispatcher, log *zap.Logger) gin.HandlerFunc {
 			resp, err := upstreamClient.Do(req)
 			if err != nil {
 				log.Warn("upstream request failed", zap.String("channel", ch.Name), zap.Error(err))
+				d.RecordResult(ch.Name, false)
 				excluded[ch.Name] = true
 				continue
 			}
@@ -84,6 +85,7 @@ func ChatCompletions(d *dispatch.Dispatcher, log *zap.Logger) gin.HandlerFunc {
 				resp.Body.Close()
 				log.Warn("upstream 5xx, failing over",
 					zap.String("channel", ch.Name), zap.Int("status", resp.StatusCode))
+				d.RecordResult(ch.Name, false)
 				excluded[ch.Name] = true
 				continue
 			}
@@ -94,6 +96,7 @@ func ChatCompletions(d *dispatch.Dispatcher, log *zap.Logger) gin.HandlerFunc {
 				observability.RelayRequests.WithLabelValues(ch.Name, head.Model, "error").Inc()
 				return
 			}
+			d.RecordResult(ch.Name, true)
 			logUsage(log, c, ch, head.Model, usage, time.Since(start))
 			observability.RelayRequests.WithLabelValues(ch.Name, head.Model, "success").Inc()
 			recordTokens(ch.Name, head.Model, usage)

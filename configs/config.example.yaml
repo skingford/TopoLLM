@@ -32,6 +32,11 @@ rate_limit:
   enabled: false
   rpm: 60
 
+# 渠道熔断：某渠道连续失败达 threshold 次后熔断 cooldown_seconds 秒，期间不被选中。
+circuit_breaker:
+  threshold: 5
+  cooldown_seconds: 30
+
 # 上游供应商渠道（数据驱动，支持自定义供应商）。
 # adaptor 支持 "openai"（OpenAI 兼容）与 "claude"（Anthropic Messages）。
 channels: []

@@ -2,6 +2,7 @@ package dispatch
 
 import (
 	"testing"
+	"time"
 
 	"github.com/kingford/TopoLLM/internal/config"
 )
@@ -57,9 +58,34 @@ func TestSelect_AllExcluded(t *testing.T) {
 
 func TestSelect_DisabledNotSelectable(t *testing.T) {
 	d := New(testChannels())
-	// 已禁用渠道不应进入候选：排除其余 3 个后应无可用渠道。
 	excluded := map[string]bool{"c1": true, "c2": true, "c3": true}
 	if _, err := d.Select("gpt", excluded); err == nil {
 		t.Error("disabled channel should not be selectable")
+	}
+}
+
+func TestSelect_SkipsOpenBreaker(t *testing.T) {
+	d := New(testChannels(), WithBreaker(1, time.Hour))
+	d.RecordResult("c1", false) // 阈值=1，立即熔断
+	d.RecordResult("c2", false)
+	ch, err := d.Select("gpt", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ch.Name != "c3" {
+		t.Errorf("expected c3 after c1/c2 breakers open, got %s", ch.Name)
+	}
+}
+
+func TestBreaker_RecoversOnSuccess(t *testing.T) {
+	d := New(testChannels(), WithBreaker(1, time.Hour))
+	d.RecordResult("c1", false) // 打开
+	d.RecordResult("c1", true)  // 成功关闭
+	ch, err := d.Select("gpt", map[string]bool{"c2": true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ch.Name != "c1" {
+		t.Errorf("c1 should recover after success, got %s", ch.Name)
 	}
 }

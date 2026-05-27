@@ -10,13 +10,14 @@ import (
 
 // Config 是网关的全局配置。
 type Config struct {
-	Server    ServerConfig    `mapstructure:"server"`
-	Log       LogConfig       `mapstructure:"log"`
-	Database  DatabaseConfig  `mapstructure:"database"`
-	Redis     RedisConfig     `mapstructure:"redis"`
-	Auth      AuthConfig      `mapstructure:"auth"`
-	RateLimit RateLimitConfig `mapstructure:"rate_limit"`
-	Channels  []ChannelConfig `mapstructure:"channels"`
+	Server         ServerConfig         `mapstructure:"server"`
+	Log            LogConfig            `mapstructure:"log"`
+	Database       DatabaseConfig       `mapstructure:"database"`
+	Redis          RedisConfig          `mapstructure:"redis"`
+	Auth           AuthConfig           `mapstructure:"auth"`
+	RateLimit      RateLimitConfig      `mapstructure:"rate_limit"`
+	CircuitBreaker CircuitBreakerConfig `mapstructure:"circuit_breaker"`
+	Channels       []ChannelConfig      `mapstructure:"channels"`
 }
 
 // ServerConfig 控制 HTTP 服务行为。
@@ -56,6 +57,12 @@ type AuthConfig struct {
 type RateLimitConfig struct {
 	Enabled bool `mapstructure:"enabled"`
 	RPM     int  `mapstructure:"rpm"` // 每分钟请求数
+}
+
+// CircuitBreakerConfig 控制渠道熔断：连续失败达阈值后熔断冷却。
+type CircuitBreakerConfig struct {
+	Threshold       int `mapstructure:"threshold"`        // 触发熔断的连续失败数
+	CooldownSeconds int `mapstructure:"cooldown_seconds"` // 熔断冷却时长（秒）
 }
 
 // ChannelConfig 描述一个上游供应商实例（数据驱动，支持自定义供应商）。
@@ -112,6 +119,8 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("auth.enabled", false)
 	v.SetDefault("rate_limit.enabled", false)
 	v.SetDefault("rate_limit.rpm", 60)
+	v.SetDefault("circuit_breaker.threshold", 5)
+	v.SetDefault("circuit_breaker.cooldown_seconds", 30)
 }
 
 func (c *Config) validate() error {
