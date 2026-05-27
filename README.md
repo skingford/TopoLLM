@@ -22,12 +22,22 @@ cmd/gateway/        入口
 internal/
   config/           配置加载（Viper + 环境变量覆盖）
   server/           Gin 服务、路由、优雅关闭
-  middleware/       RequestID / Logger / Recovery / CORS
+  middleware/       RequestID / Logger / Metrics / Recovery / CORS / Auth / RateLimit
   adaptor/          南向适配器 SPI（接口 + 注册表）
-  relay/            统一 OpenAI 兼容 schema
+    openaicompat/   OpenAI 兼容通用适配器（+ embeddings）
+    anthropic/      Claude 原生适配器
+    gemini/         Gemini 原生适配器
+    azure/          Azure OpenAI 适配器（+ embeddings）
+  dispatch/         渠道选择、负载均衡、故障转移、熔断、运行时 CRUD
+  gateway/          /v1/chat/completions 与 /v1/embeddings 编排
+  billing/          定价表、三阶段配额消费、用量记录
+  plugin/           请求前置插件管线（+ builtin: 敏感词/审计）
+  admin/            管理 API（渠道 CRUD + 连通性测试）
+  security/         SSRF 出口防护
+  relay/            统一 OpenAI 兼容 schema + 透传辅助
   store/            GORM + Redis 初始化
-  model/            持久化模型
-  observability/    zap 日志
+  model/            持久化模型（UsageLog 等）
+  observability/    zap 日志 + Prometheus 指标
 configs/            配置示例
 deployments/        Dockerfile + docker-compose
 docs/research/      技术调研与实施规划
@@ -37,12 +47,14 @@ docs/research/      技术调研与实施规划
 
 完整技术调研与分阶段规划见 [`docs/research/llm-gateway-research.md`](docs/research/llm-gateway-research.md)。
 
-当前进度：
+## 能力
 
-- ✅ Phase 0 脚手架
-- ✅ Phase 1 OpenAI 兼容 `/v1/chat/completions`（非流式 + SSE 流式）
-- ✅ Phase 2 适配器 SPI + 通用 OpenAI 适配器（数据驱动渠道、自定义供应商）
-- ✅ Phase 3 Claude 原生适配器（OpenAI ↔ Anthropic Messages 互转）
-- ✅ Phase 4 多渠道负载均衡 + 故障转移
-- 🚧 Phase 5 鉴权（令牌）已做；配额/计费待办
-- 🚧 Phase 6 内存限流已做；Redis 分布式限流 / Prometheus / 管理 API 待办
+- **统一接口**：对外 OpenAI 兼容 `/v1/chat/completions`（非流式 + SSE 流式）、`/v1/embeddings`
+- **适配器**：`openai`（OpenAI 兼容，含 DeepSeek/通义/智谱/Kimi/豆包/Grok/自托管/中转）、`claude`（Anthropic 原生）、`gemini`（Google 原生）、`azure`（Azure OpenAI）
+- **自定义供应商**：数据驱动渠道，运行时增删，不限官方
+- **调度**：优先级 + 加权随机负载均衡、故障转移、被动熔断
+- **鉴权计费**：API 令牌鉴权、三阶段配额消费、定价表、用量落库
+- **限流**：内存令牌桶 / Redis 分布式（固定窗口）
+- **插件管线**：请求前置 Hook 链（敏感词、审计），可短路、可扩展
+- **管理 API**：`/admin` 渠道 CRUD + 连通性测试 + SSRF 出口防护
+- **可观测**：结构化日志、Prometheus `/metrics`、优雅关闭
