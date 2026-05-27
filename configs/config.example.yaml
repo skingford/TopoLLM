@@ -1,0 +1,22 @@
+# TopoLLM 网关配置示例。复制为 configs/config.yaml 后按需修改。
+# 所有字段均可用环境变量覆盖：前缀 TOPOLLM_，点替换为下划线。
+# 例如 server.port -> TOPOLLM_SERVER_PORT
+
+server:
+  port: 8080
+  mode: release          # debug | release
+  shutdown_timeout: 10   # 优雅关闭超时（秒）
+
+log:
+  level: info            # debug | info | warn | error
+  format: json           # json | console
+
+database:
+  enabled: false
+  # dsn: "topollm:topollm@tcp(127.0.0.1:3306)/topollm?charset=utf8mb4&parseTime=True&loc=Local"
+
+redis:
+  enabled: false
+  addr: "localhost:6379"
+  password: ""
+  db: 0
