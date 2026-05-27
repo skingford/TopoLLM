@@ -16,8 +16,24 @@ import (
 	"github.com/kingford/TopoLLM/internal/relay"
 )
 
-// Embeddings 返回 /v1/embeddings 的处理器。仅支持实现 adaptor.EmbeddingsAdaptor 的渠道。
+// Embeddings 返回 /v1/embeddings 处理器。
 func Embeddings(d *dispatch.Dispatcher, bill *billing.Service, chain *plugin.Chain, log *zap.Logger) gin.HandlerFunc {
+	return passthrough(d, bill, chain, log, "embeddings")
+}
+
+// Images 返回 /v1/images/generations 处理器。
+func Images(d *dispatch.Dispatcher, bill *billing.Service, chain *plugin.Chain, log *zap.Logger) gin.HandlerFunc {
+	return passthrough(d, bill, chain, log, "images/generations")
+}
+
+// Rerank 返回 /v1/rerank 处理器（如 SiliconFlow/Jina 风格的 OpenAI 兼容端点）。
+func Rerank(d *dispatch.Dispatcher, bill *billing.Service, chain *plugin.Chain, log *zap.Logger) gin.HandlerFunc {
+	return passthrough(d, bill, chain, log, "rerank")
+}
+
+// passthrough 构造一个非流式透传处理器：把请求按 upstreamPath 转发到支持 PathAdaptor 的渠道。
+// 复用插件前置、三阶段计费与故障转移逻辑。
+func passthrough(d *dispatch.Dispatcher, bill *billing.Service, chain *plugin.Chain, log *zap.Logger, upstreamPath string) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		body, err := io.ReadAll(c.Request.Body)
 		if err != nil {
@@ -77,13 +93,13 @@ func Embeddings(d *dispatch.Dispatcher, bill *billing.Service, chain *plugin.Cha
 				excluded[ch.Name] = true
 				continue
 			}
-			emb, ok := ad.(adaptor.EmbeddingsAdaptor)
+			pa, ok := ad.(adaptor.PathAdaptor)
 			if !ok {
-				writeError(c, http.StatusBadRequest, "model does not support embeddings: "+head.Model)
+				writeError(c, http.StatusBadRequest, "model does not support /"+upstreamPath+": "+head.Model)
 				return
 			}
 
-			req, err := emb.SetupEmbeddings(c.Request.Context(), in, ch)
+			req, err := pa.SetupPath(c.Request.Context(), in, ch, upstreamPath)
 			if err != nil {
 				excluded[ch.Name] = true
 				continue
@@ -91,7 +107,7 @@ func Embeddings(d *dispatch.Dispatcher, bill *billing.Service, chain *plugin.Cha
 
 			resp, err := upstreamClient.Do(req)
 			if err != nil {
-				log.Warn("embeddings upstream failed", zap.String("channel", ch.Name), zap.Error(err))
+				log.Warn("passthrough upstream failed", zap.String("channel", ch.Name), zap.String("path", upstreamPath), zap.Error(err))
 				d.RecordResult(ch.Name, false)
 				excluded[ch.Name] = true
 				continue

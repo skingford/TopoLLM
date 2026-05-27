@@ -35,9 +35,9 @@ func (*Adaptor) SetupRequest(ctx context.Context, in *adaptor.Request, ch *adapt
 	return build(ctx, in, ch, "chat/completions")
 }
 
-// SetupEmbeddings 构造 Azure embeddings 请求（实现 adaptor.EmbeddingsAdaptor）。
-func (*Adaptor) SetupEmbeddings(ctx context.Context, in *adaptor.Request, ch *adaptor.Channel) (*http.Request, error) {
-	return build(ctx, in, ch, "embeddings")
+// SetupPath 构造 Azure 任意子路径请求（实现 adaptor.PathAdaptor）。
+func (*Adaptor) SetupPath(ctx context.Context, in *adaptor.Request, ch *adaptor.Channel, path string) (*http.Request, error) {
+	return build(ctx, in, ch, strings.TrimPrefix(path, "/"))
 }
 
 func build(ctx context.Context, in *adaptor.Request, ch *adaptor.Channel, path string) (*http.Request, error) {

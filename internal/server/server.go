@@ -69,6 +69,8 @@ func (s *Server) registerRoutes(e *gin.Engine, d *dispatch.Dispatcher, bill *bil
 	})
 	v1.POST("/chat/completions", gateway.ChatCompletions(d, bill, chain, s.log))
 	v1.POST("/embeddings", gateway.Embeddings(d, bill, chain, s.log))
+	v1.POST("/images/generations", gateway.Images(d, bill, chain, s.log))
+	v1.POST("/rerank", gateway.Rerank(d, bill, chain, s.log))
 
 	// 运维管理 API（admin 令牌保护，含 SSRF 出口防护）。
 	if s.cfg.Admin.Enabled {

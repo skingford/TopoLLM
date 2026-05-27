@@ -50,8 +50,8 @@ type Adaptor interface {
 	RelayResponse(w http.ResponseWriter, resp *http.Response, stream bool) (*relay.Usage, error)
 }
 
-// EmbeddingsAdaptor 是可选能力接口：支持 /embeddings 的适配器实现它。
-// 调度层通过类型断言探测，未实现者视为不支持 embeddings。
-type EmbeddingsAdaptor interface {
-	SetupEmbeddings(ctx context.Context, in *Request, ch *Channel) (*http.Request, error)
+// PathAdaptor 是可选能力接口：支持任意 OpenAI 兼容子路径（embeddings、images/generations、rerank 等）。
+// 调度层通过类型断言探测，未实现者视为不支持该类端点。
+type PathAdaptor interface {
+	SetupPath(ctx context.Context, in *Request, ch *Channel, path string) (*http.Request, error)
 }

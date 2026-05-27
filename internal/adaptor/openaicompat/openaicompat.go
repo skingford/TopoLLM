@@ -33,9 +33,9 @@ func (*Adaptor) SetupRequest(ctx context.Context, in *adaptor.Request, ch *adapt
 	return build(ctx, ch, "/chat/completions", in.Body, in.Stream)
 }
 
-// SetupEmbeddings 构造面向上游的 embeddings 请求（实现 adaptor.EmbeddingsAdaptor）。
-func (*Adaptor) SetupEmbeddings(ctx context.Context, in *adaptor.Request, ch *adaptor.Channel) (*http.Request, error) {
-	return build(ctx, ch, "/embeddings", in.Body, false)
+// SetupPath 构造面向上游任意子路径的请求（实现 adaptor.PathAdaptor）。
+func (*Adaptor) SetupPath(ctx context.Context, in *adaptor.Request, ch *adaptor.Channel, path string) (*http.Request, error) {
+	return build(ctx, ch, "/"+strings.TrimPrefix(path, "/"), in.Body, in.Stream)
 }
 
 func build(ctx context.Context, ch *adaptor.Channel, path string, body []byte, stream bool) (*http.Request, error) {

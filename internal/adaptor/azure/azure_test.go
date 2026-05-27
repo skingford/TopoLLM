@@ -37,10 +37,10 @@ func TestSetupRequest_DeploymentOverride(t *testing.T) {
 	}
 }
 
-func TestSetupEmbeddings(t *testing.T) {
+func TestSetupPath(t *testing.T) {
 	in := &adaptor.Request{Model: "text-embed", Body: []byte(`{}`)}
 	ch := &adaptor.Channel{BaseURL: "https://x.openai.azure.com", APIKey: "k"}
-	req, err := (&Adaptor{}).SetupEmbeddings(context.Background(), in, ch)
+	req, err := (&Adaptor{}).SetupPath(context.Background(), in, ch, "embeddings")
 	if err != nil {
 		t.Fatal(err)
 	}
