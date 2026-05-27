@@ -12,19 +12,32 @@ import (
 	"github.com/kingford/TopoLLM/internal/relay"
 )
 
+// quotaStore 抽象配额存储，便于内存与 DB 两种实现互换。
+type quotaStore interface {
+	Reserve(token string, amount float64) error
+	Settle(token string, reserved, actual float64)
+	Balance(token string) float64
+}
+
 // Service 统一计费：定价、配额（三阶段消费）、用量记录。
 type Service struct {
 	prices *PriceTable
-	quota  *Quota
+	quota  quotaStore
 	db     *gorm.DB
 	log    *zap.Logger
 }
 
-// New 构建计费服务。db 为 nil 时不落库（仅指标 + 日志）。
+// New 构建计费服务。db 非空且 billing 启用时配额持久化到 DB，否则用单机内存配额。
 func New(cfg config.BillingConfig, db *gorm.DB, log *zap.Logger) *Service {
+	var q quotaStore
+	if cfg.Enabled && db != nil {
+		q = newDBQuota(db, cfg.Quotas, log)
+	} else {
+		q = NewQuota(cfg.Enabled, cfg.Quotas)
+	}
 	return &Service{
 		prices: NewPriceTable(cfg.Pricing),
-		quota:  NewQuota(cfg.Enabled, cfg.Quotas),
+		quota:  q,
 		db:     db,
 		log:    log,
 	}
@@ -41,7 +54,7 @@ func (s *Service) Reserve(token, modelName string, promptTokens, maxTokens int) 
 
 // Refund 请求失败时全额退还预扣。
 func (s *Service) Refund(token string, reserved float64) {
-	s.quota.Refund(token, reserved)
+	s.quota.Settle(token, reserved, 0)
 }
 
 // Settle 结算实际费用：退还差额、累加费用指标、记录用量。

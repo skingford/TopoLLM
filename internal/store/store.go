@@ -28,7 +28,7 @@ func New(ctx context.Context, cfg *config.Config) (*Store, error) {
 		if err != nil {
 			return nil, fmt.Errorf("connect database: %w", err)
 		}
-		if err := db.AutoMigrate(&model.UsageLog{}); err != nil {
+		if err := db.AutoMigrate(&model.UsageLog{}, &model.TokenQuota{}); err != nil {
 			return nil, fmt.Errorf("migrate: %w", err)
 		}
 		s.DB = db

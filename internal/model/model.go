@@ -39,3 +39,10 @@ type UsageLog struct {
 	Cost             float64   `json:"cost"`
 	CreatedAt        time.Time `gorm:"index" json:"created_at"`
 }
+
+// TokenQuota 持久化每令牌的配额余额（DB 配额存储；按 cost 扣减）。
+type TokenQuota struct {
+	TokenKey  string    `gorm:"primaryKey;size:64" json:"token_key"`
+	Balance   float64   `json:"balance"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
