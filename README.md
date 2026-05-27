@@ -49,7 +49,8 @@ docs/research/      技术调研与实施规划
 
 ## 能力
 
-- **统一接口**：对外 OpenAI 兼容 `/v1/chat/completions`（非流式 + SSE 流式）、`/v1/embeddings`
+- **统一接口**：OpenAI 兼容 `/v1/chat/completions`（非流式 + SSE 流式）、`/v1/embeddings`、`/v1/images/generations`、`/v1/rerank`
+- **健康探测**：渠道主动连通性探测后台任务，失败反馈熔断器
 - **适配器**：`openai`（OpenAI 兼容，含 DeepSeek/通义/智谱/Kimi/豆包/Grok/自托管/中转）、`claude`（Anthropic 原生）、`gemini`（Google 原生）、`azure`（Azure OpenAI）
 - **自定义供应商**：数据驱动渠道，运行时增删，不限官方
 - **调度**：优先级 + 加权随机负载均衡、故障转移、被动熔断
