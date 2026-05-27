@@ -71,7 +71,7 @@ func main() {
 		zap.Int("plugins", len(cfg.Plugins)),
 	)
 
-	srv := server.New(cfg, log, disp, bill, chain)
+	srv := server.New(cfg, log, disp, bill, chain, st.Redis)
 	if err := srv.Run(ctx); err != nil {
 		log.Sugar().Fatalf("server: %v", err)
 	}

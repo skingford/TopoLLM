@@ -1,6 +1,8 @@
 package middleware
 
 import (
+	"context"
+	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
@@ -9,6 +11,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"github.com/redis/go-redis/v9"
 	"go.uber.org/zap"
 
 	"github.com/kingford/TopoLLM/internal/config"
@@ -112,10 +115,10 @@ func Auth(cfg config.AuthConfig) gin.HandlerFunc {
 	}
 }
 
-// RateLimit 基于令牌桶按 API 令牌（无则按客户端 IP）限流。
-// Enabled=false 时放行。当前为单机内存实现；分布式 Redis 版为后续阶段。
-func RateLimit(cfg config.RateLimitConfig) gin.HandlerFunc {
-	rl := newRateLimiter(cfg.RPM)
+// RateLimit 按 API 令牌（无则按客户端 IP）限流。Enabled=false 时放行。
+// rdb 非空时用 Redis 固定窗口实现（跨实例一致）；否则用单机内存令牌桶。
+func RateLimit(cfg config.RateLimitConfig, rdb *redis.Client) gin.HandlerFunc {
+	local := newRateLimiter(cfg.RPM)
 	return func(c *gin.Context) {
 		if !cfg.Enabled {
 			c.Next()
@@ -125,7 +128,14 @@ func RateLimit(cfg config.RateLimitConfig) gin.HandlerFunc {
 		if key == "" {
 			key = c.ClientIP()
 		}
-		if !rl.allow(key) {
+
+		allowed := true
+		if rdb != nil {
+			allowed = redisAllow(c.Request.Context(), rdb, key, cfg.RPM)
+		} else {
+			allowed = local.allow(key)
+		}
+		if !allowed {
 			c.AbortWithStatusJSON(http.StatusTooManyRequests, gin.H{
 				"error": gin.H{"message": "rate limit exceeded", "type": "rate_limit_error"},
 			})
@@ -133,6 +143,20 @@ func RateLimit(cfg config.RateLimitConfig) gin.HandlerFunc {
 		}
 		c.Next()
 	}
+}
+
+// redisAllow 以"每分钟固定窗口"计数限流；Redis 出错时 fail-open。
+func redisAllow(ctx context.Context, rdb *redis.Client, key string, rpm int) bool {
+	window := time.Now().Unix() / 60
+	rkey := fmt.Sprintf("topollm:rl:%s:%d", key, window)
+	cnt, err := rdb.Incr(ctx, rkey).Result()
+	if err != nil {
+		return true // fail-open：限流组件不可用时不阻断业务
+	}
+	if cnt == 1 {
+		rdb.Expire(ctx, rkey, 70*time.Second)
+	}
+	return cnt <= int64(rpm)
 }
 
 func bearerToken(h string) string {
@@ -143,7 +167,7 @@ func bearerToken(h string) string {
 	return h
 }
 
-// ---- 内存令牌桶限流器 ----
+// ---- 内存令牌桶限流器（单机回退） ----
 
 type bucket struct {
 	tokens float64

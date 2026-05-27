@@ -46,7 +46,7 @@ func TestAuth_RejectsBadToken(t *testing.T) {
 }
 
 func TestRateLimit_BlocksAfterBudget(t *testing.T) {
-	e := newTestEngine(RateLimit(config.RateLimitConfig{Enabled: true, RPM: 1}))
+	e := newTestEngine(RateLimit(config.RateLimitConfig{Enabled: true, RPM: 1}, nil))
 
 	// 桶初始满（容量=rpm=1），首个请求放行。
 	if rec := do(e, "k"); rec.Code != http.StatusOK {
@@ -59,7 +59,7 @@ func TestRateLimit_BlocksAfterBudget(t *testing.T) {
 }
 
 func TestRateLimit_Disabled(t *testing.T) {
-	e := newTestEngine(RateLimit(config.RateLimitConfig{Enabled: false, RPM: 1}))
+	e := newTestEngine(RateLimit(config.RateLimitConfig{Enabled: false, RPM: 1}, nil))
 	for i := 0; i < 5; i++ {
 		if rec := do(e, "k"); rec.Code != http.StatusOK {
 			t.Fatalf("disabled rate limit should pass, got %d", rec.Code)
