@@ -39,7 +39,6 @@ circuit_breaker:
 
 # 计费与配额。enabled=false 时仅记录用量、不强制配额。
 # pricing：每百万 token 价格，"default" 为兜底。quotas：每令牌总额度（缺省不限）。
-# 用量在 database.enabled 时落库（usage_logs 表）。
 billing:
   enabled: false
   pricing:
@@ -47,6 +46,17 @@ billing:
     # "deepseek-chat": { input: 0.14, output: 0.28 }
   quotas: {}
     # "sk-your-gateway-token": 100.0
+
+# 请求前置插件（按 priority 降序执行，可短路拒绝）。内置：sensitive_words、audit。
+plugins: []
+  # - name: audit
+  #   enabled: true
+  #   priority: 100
+  # - name: sensitive_words
+  #   enabled: true
+  #   priority: 50
+  #   options:
+  #     words: ["违禁词1", "违禁词2"]
 
 # 上游供应商渠道（数据驱动，支持自定义供应商）。
 # adaptor 支持："openai"（OpenAI 兼容，含 DeepSeek/通义/Kimi/豆包/Grok 等）、

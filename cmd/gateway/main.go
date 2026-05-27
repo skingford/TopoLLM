@@ -15,13 +15,15 @@ import (
 	"github.com/kingford/TopoLLM/internal/config"
 	"github.com/kingford/TopoLLM/internal/dispatch"
 	"github.com/kingford/TopoLLM/internal/observability"
+	"github.com/kingford/TopoLLM/internal/plugin"
 	"github.com/kingford/TopoLLM/internal/server"
 	"github.com/kingford/TopoLLM/internal/store"
 
-	// 注册内置适配器（通过 init() 自注册到 adaptor 注册表）。
+	// 注册内置适配器与插件（通过 init() 自注册）。
 	_ "github.com/kingford/TopoLLM/internal/adaptor/anthropic"
 	_ "github.com/kingford/TopoLLM/internal/adaptor/gemini"
 	_ "github.com/kingford/TopoLLM/internal/adaptor/openaicompat"
+	_ "github.com/kingford/TopoLLM/internal/plugin/builtin"
 )
 
 func main() {
@@ -59,12 +61,17 @@ func main() {
 		time.Duration(cfg.CircuitBreaker.CooldownSeconds)*time.Second,
 	))
 	bill := billing.New(cfg.Billing, st.DB, log)
+	chain, err := plugin.BuildChain(cfg.Plugins, log)
+	if err != nil {
+		log.Sugar().Fatalf("build plugin chain: %v", err)
+	}
 	log.Info("gateway initialized",
 		zap.Int("channels", len(cfg.Channels)),
 		zap.Bool("billing", cfg.Billing.Enabled),
+		zap.Int("plugins", len(cfg.Plugins)),
 	)
 
-	srv := server.New(cfg, log, disp, bill)
+	srv := server.New(cfg, log, disp, bill, chain)
 	if err := srv.Run(ctx); err != nil {
 		log.Sugar().Fatalf("server: %v", err)
 	}

@@ -18,6 +18,7 @@ type Config struct {
 	RateLimit      RateLimitConfig      `mapstructure:"rate_limit"`
 	CircuitBreaker CircuitBreakerConfig `mapstructure:"circuit_breaker"`
 	Billing        BillingConfig        `mapstructure:"billing"`
+	Plugins        []PluginConfig       `mapstructure:"plugins"`
 	Channels       []ChannelConfig      `mapstructure:"channels"`
 }
 
@@ -77,6 +78,14 @@ type BillingConfig struct {
 	Enabled bool               `mapstructure:"enabled"`
 	Pricing map[string]Price   `mapstructure:"pricing"` // model -> 单价；"default" 为兜底
 	Quotas  map[string]float64 `mapstructure:"quotas"`  // token -> 总额度
+}
+
+// PluginConfig 描述一个请求前置插件的启用与配置。
+type PluginConfig struct {
+	Name     string         `mapstructure:"name"`
+	Enabled  bool           `mapstructure:"enabled"`
+	Priority int            `mapstructure:"priority"` // 越大越先执行
+	Options  map[string]any `mapstructure:"options"`
 }
 
 // ChannelConfig 描述一个上游供应商实例（数据驱动，支持自定义供应商）。

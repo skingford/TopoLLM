@@ -14,18 +14,32 @@ import (
 	"github.com/kingford/TopoLLM/internal/billing"
 	"github.com/kingford/TopoLLM/internal/config"
 	"github.com/kingford/TopoLLM/internal/dispatch"
+	"github.com/kingford/TopoLLM/internal/plugin"
+	_ "github.com/kingford/TopoLLM/internal/plugin/builtin" // 注册内置插件
 )
 
 func newEngine(d *dispatch.Dispatcher) *gin.Engine {
+	return newEngineWith(d, config.BillingConfig{}, nil)
+}
+
+func newEngineWith(d *dispatch.Dispatcher, billCfg config.BillingConfig, plugins []config.PluginConfig) *gin.Engine {
 	gin.SetMode(gin.TestMode)
-	bill := billing.New(config.BillingConfig{}, nil, zap.NewNop())
+	bill := billing.New(billCfg, nil, zap.NewNop())
+	chain, _ := plugin.BuildChain(plugins, zap.NewNop())
 	e := gin.New()
-	e.POST("/v1/chat/completions", ChatCompletions(d, bill, zap.NewNop()))
+	e.POST("/v1/chat/completions", ChatCompletions(d, bill, chain, zap.NewNop()))
 	return e
 }
 
 func post(e *gin.Engine, body string) *httptest.ResponseRecorder {
+	return postAuth(e, body, "")
+}
+
+func postAuth(e *gin.Engine, body, token string) *httptest.ResponseRecorder {
 	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(body))
+	if token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
+	}
 	rec := httptest.NewRecorder()
 	e.ServeHTTP(rec, req)
 	return rec
@@ -121,24 +135,31 @@ func TestChatCompletions_BadRequest(t *testing.T) {
 }
 
 func TestChatCompletions_QuotaExceeded(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-	// 配额为 0 的令牌应被拒（402）。
-	bill := billing.New(config.BillingConfig{
+	billCfg := config.BillingConfig{
 		Enabled: true,
 		Pricing: map[string]config.Price{"default": {Input: 1, Output: 1}},
 		Quotas:  map[string]float64{"sk-empty": 0},
-	}, nil, zap.NewNop())
+	}
 	d := dispatch.New([]config.ChannelConfig{
 		{Name: "test", Adaptor: "openai", BaseURL: "http://127.0.0.1:1", Models: []string{"gpt"}, Enabled: true},
 	})
-	e := gin.New()
-	e.POST("/v1/chat/completions", ChatCompletions(d, bill, zap.NewNop()))
-
-	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"gpt","max_tokens":100,"messages":[{"role":"user","content":"hi"}]}`))
-	req.Header.Set("Authorization", "Bearer sk-empty")
-	rec := httptest.NewRecorder()
-	e.ServeHTTP(rec, req)
+	rec := postAuth(newEngineWith(d, billCfg, nil),
+		`{"model":"gpt","max_tokens":100,"messages":[{"role":"user","content":"hi"}]}`, "sk-empty")
 	if rec.Code != http.StatusPaymentRequired {
 		t.Errorf("status = %d, want 402", rec.Code)
+	}
+}
+
+func TestChatCompletions_PluginBlocks(t *testing.T) {
+	plugins := []config.PluginConfig{
+		{Name: "sensitive_words", Enabled: true, Options: map[string]any{"words": []any{"forbidden"}}},
+	}
+	d := dispatch.New([]config.ChannelConfig{
+		{Name: "test", Adaptor: "openai", BaseURL: "http://127.0.0.1:1", Models: []string{"gpt"}, Enabled: true},
+	})
+	rec := post(newEngineWith(d, config.BillingConfig{}, plugins),
+		`{"model":"gpt","messages":[{"role":"user","content":"this is forbidden"}]}`)
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("status = %d, want 400 (blocked by sensitive_words)", rec.Code)
 	}
 }

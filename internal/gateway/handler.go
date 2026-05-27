@@ -1,5 +1,5 @@
 // Package gateway 实现对外 OpenAI 兼容端点的请求编排：
-// 解析 → 计费预扣 → 选渠道 → 适配器转换 → 转发上游 → 故障转移 → 结算/退款 → 写回客户端。
+// 解析 → 插件前置 → 计费预扣 → 选渠道 → 适配器转换 → 转发上游 → 故障转移 → 结算/退款 → 写回。
 package gateway
 
 import (
@@ -16,6 +16,7 @@ import (
 	"github.com/kingford/TopoLLM/internal/billing"
 	"github.com/kingford/TopoLLM/internal/dispatch"
 	"github.com/kingford/TopoLLM/internal/observability"
+	"github.com/kingford/TopoLLM/internal/plugin"
 	"github.com/kingford/TopoLLM/internal/relay"
 )
 
@@ -33,7 +34,7 @@ var upstreamClient = &http.Client{
 }
 
 // ChatCompletions 返回 /v1/chat/completions 的处理器。
-func ChatCompletions(d *dispatch.Dispatcher, bill *billing.Service, log *zap.Logger) gin.HandlerFunc {
+func ChatCompletions(d *dispatch.Dispatcher, bill *billing.Service, chain *plugin.Chain, log *zap.Logger) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		body, err := io.ReadAll(c.Request.Body)
 		if err != nil {
@@ -51,14 +52,23 @@ func ChatCompletions(d *dispatch.Dispatcher, bill *billing.Service, log *zap.Log
 			return
 		}
 
-		// 计费三阶段（1/3）：预扣估算费用。
 		token := bearerToken(c.GetHeader("Authorization"))
+		reqID := c.GetString("request_id")
+
+		// 插件前置：审核/敏感词/改写，可短路拒绝。
+		pctx := &plugin.Context{RequestID: reqID, Token: token, Model: head.Model, Stream: head.Stream, Body: body, Log: log}
+		if res := chain.OnRequest(pctx); res.Action == plugin.ActionReject {
+			writeError(c, res.Status, res.Message)
+			return
+		}
+		body = pctx.Body // 插件可能已改写请求体
+
+		// 计费三阶段（1/3）：预扣估算费用。
 		reserved, err := bill.Reserve(token, head.Model, len(body)/charsPerToken, head.MaxTokens)
 		if err != nil {
 			writeError(c, http.StatusPaymentRequired, "insufficient quota for model: "+head.Model)
 			return
 		}
-		reqID := c.GetString("request_id")
 		settled := false
 		settle := func(channel string, usage *relay.Usage) {
 			bill.Settle(token, head.Model, reqID, channel, reserved, usage) // 阶段 2/3：结算

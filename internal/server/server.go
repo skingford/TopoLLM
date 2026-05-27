@@ -16,6 +16,7 @@ import (
 	"github.com/kingford/TopoLLM/internal/dispatch"
 	"github.com/kingford/TopoLLM/internal/gateway"
 	"github.com/kingford/TopoLLM/internal/middleware"
+	"github.com/kingford/TopoLLM/internal/plugin"
 )
 
 // Server 封装 HTTP 服务与其依赖。
@@ -26,7 +27,7 @@ type Server struct {
 }
 
 // New 构建一个配置好路由与中间件的 Server。
-func New(cfg *config.Config, log *zap.Logger, d *dispatch.Dispatcher, bill *billing.Service) *Server {
+func New(cfg *config.Config, log *zap.Logger, d *dispatch.Dispatcher, bill *billing.Service, chain *plugin.Chain) *Server {
 	gin.SetMode(cfg.Server.Mode)
 	engine := gin.New()
 	engine.Use(
@@ -46,11 +47,11 @@ func New(cfg *config.Config, log *zap.Logger, d *dispatch.Dispatcher, bill *bill
 			ReadHeaderTimeout: 10 * time.Second,
 		},
 	}
-	s.registerRoutes(engine, d, bill)
+	s.registerRoutes(engine, d, bill, chain)
 	return s
 }
 
-func (s *Server) registerRoutes(e *gin.Engine, d *dispatch.Dispatcher, bill *billing.Service) {
+func (s *Server) registerRoutes(e *gin.Engine, d *dispatch.Dispatcher, bill *billing.Service, chain *plugin.Chain) {
 	e.GET("/healthz", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"status": "ok"})
 	})
@@ -63,7 +64,7 @@ func (s *Server) registerRoutes(e *gin.Engine, d *dispatch.Dispatcher, bill *bil
 	v1.GET("/models", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"object": "list", "data": []any{}})
 	})
-	v1.POST("/chat/completions", gateway.ChatCompletions(d, bill, s.log))
+	v1.POST("/chat/completions", gateway.ChatCompletions(d, bill, chain, s.log))
 }
 
 // Run 启动服务并阻塞，直至 ctx 取消后优雅关闭。
