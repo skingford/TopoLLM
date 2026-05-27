@@ -13,12 +13,12 @@ type stubAdaptor struct{}
 func (stubAdaptor) Name() string               { return "stub" }
 func (stubAdaptor) Capabilities() Capabilities { return Capabilities{Chat: true} }
 
-func (stubAdaptor) ConvertRequest(context.Context, *relay.ChatRequest, *Channel) (*http.Request, error) {
+func (stubAdaptor) SetupRequest(context.Context, *Request, *Channel) (*http.Request, error) {
 	return nil, nil
 }
 
-func (stubAdaptor) ParseResponse(context.Context, *http.Response) (*relay.ChatResponse, *relay.Usage, error) {
-	return nil, nil, nil
+func (stubAdaptor) RelayResponse(http.ResponseWriter, *http.Response, bool) (*relay.Usage, error) {
+	return nil, nil
 }
 
 func TestRegisterAndGet(t *testing.T) {

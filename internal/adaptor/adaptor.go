@@ -20,23 +20,30 @@ type Capabilities struct {
 }
 
 // Channel 是一个上游供应商实例（数据驱动，运行时可定义）。
-// Phase 0 仅占位；Phase 2 接入数据库与完整字段（模型映射、quirks、权重等）。
 type Channel struct {
-	Name    string
-	Adaptor string
-	BaseURL string
-	APIKey  string
+	Name     string
+	Adaptor  string
+	BaseURL  string
+	APIKey   string
+	Weight   int
+	Priority int
 }
 
-// Adaptor 把统一的 OpenAI schema 翻译为某厂商协议，并解析其响应。
+// Request 是经网关解析后的统一调用请求（对外 OpenAI 格式）。
+type Request struct {
+	Model  string
+	Stream bool
+	Body   []byte // 原始 OpenAI 格式请求体
+}
+
+// Adaptor 把统一的 OpenAI schema 翻译为某厂商协议，并把上游响应写回客户端。
 type Adaptor interface {
 	// Name 返回适配器的唯一标识。
 	Name() string
 	// Capabilities 返回该适配器支持的能力。
 	Capabilities() Capabilities
-	// ConvertRequest 将统一请求转换为面向上游的 HTTP 请求。
-	ConvertRequest(ctx context.Context, req *relay.ChatRequest, ch *Channel) (*http.Request, error)
-	// ParseResponse 解析上游的非流式响应为统一结构与用量。
-	ParseResponse(ctx context.Context, resp *http.Response) (*relay.ChatResponse, *relay.Usage, error)
-	// 注：流式解析 (ParseStream) 在 Phase 1 引入流式时补充。
+	// SetupRequest 构造面向上游的 HTTP 请求（含鉴权、URL、body 转换）。
+	SetupRequest(ctx context.Context, in *Request, ch *Channel) (*http.Request, error)
+	// RelayResponse 将上游响应写回 w（处理流式与非流式），并尽力返回用量。
+	RelayResponse(w http.ResponseWriter, resp *http.Response, stream bool) (*relay.Usage, error)
 }

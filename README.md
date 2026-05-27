@@ -35,4 +35,14 @@ docs/research/      技术调研与实施规划
 
 ## 路线
 
-完整技术调研与分阶段规划见 [`docs/research/llm-gateway-research.md`](docs/research/llm-gateway-research.md)。当前进度：**Phase 0（脚手架）**。
+完整技术调研与分阶段规划见 [`docs/research/llm-gateway-research.md`](docs/research/llm-gateway-research.md)。
+
+当前进度：
+
+- ✅ Phase 0 脚手架
+- ✅ Phase 1 OpenAI 兼容 `/v1/chat/completions`（非流式 + SSE 流式）
+- ✅ Phase 2 适配器 SPI + 通用 OpenAI 适配器（数据驱动渠道、自定义供应商）
+- ✅ Phase 3 Claude 原生适配器（OpenAI ↔ Anthropic Messages 互转）
+- ✅ Phase 4 多渠道负载均衡 + 故障转移
+- 🚧 Phase 5 鉴权（令牌）已做；配额/计费待办
+- 🚧 Phase 6 内存限流已做；Redis 分布式限流 / Prometheus / 管理 API 待办

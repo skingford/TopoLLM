@@ -2,11 +2,15 @@ package middleware
 
 import (
 	"net/http"
+	"strings"
+	"sync"
 	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"go.uber.org/zap"
+
+	"github.com/kingford/TopoLLM/internal/config"
 )
 
 // RequestIDHeader 是请求 ID 的响应/请求头名称。
@@ -68,4 +72,104 @@ func CORS() gin.HandlerFunc {
 		}
 		c.Next()
 	}
+}
+
+// Auth 校验对外 API 令牌（Bearer）。Auth.Enabled=false 时放行。
+func Auth(cfg config.AuthConfig) gin.HandlerFunc {
+	allowed := make(map[string]struct{}, len(cfg.Tokens))
+	for _, t := range cfg.Tokens {
+		allowed[t] = struct{}{}
+	}
+	return func(c *gin.Context) {
+		if !cfg.Enabled {
+			c.Next()
+			return
+		}
+		token := bearerToken(c.GetHeader("Authorization"))
+		if _, ok := allowed[token]; !ok {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
+				"error": gin.H{"message": "invalid api key", "type": "authentication_error"},
+			})
+			return
+		}
+		c.Next()
+	}
+}
+
+// RateLimit 基于令牌桶按 API 令牌（无则按客户端 IP）限流。
+// Enabled=false 时放行。当前为单机内存实现；分布式 Redis 版为后续阶段。
+func RateLimit(cfg config.RateLimitConfig) gin.HandlerFunc {
+	rl := newRateLimiter(cfg.RPM)
+	return func(c *gin.Context) {
+		if !cfg.Enabled {
+			c.Next()
+			return
+		}
+		key := bearerToken(c.GetHeader("Authorization"))
+		if key == "" {
+			key = c.ClientIP()
+		}
+		if !rl.allow(key) {
+			c.AbortWithStatusJSON(http.StatusTooManyRequests, gin.H{
+				"error": gin.H{"message": "rate limit exceeded", "type": "rate_limit_error"},
+			})
+			return
+		}
+		c.Next()
+	}
+}
+
+func bearerToken(h string) string {
+	const prefix = "Bearer "
+	if strings.HasPrefix(h, prefix) {
+		return strings.TrimPrefix(h, prefix)
+	}
+	return h
+}
+
+// ---- 内存令牌桶限流器 ----
+
+type bucket struct {
+	tokens float64
+	last   time.Time
+}
+
+type rateLimiter struct {
+	mu       sync.Mutex
+	capacity float64
+	refill   float64 // 每秒补充的令牌数
+	buckets  map[string]*bucket
+}
+
+func newRateLimiter(rpm int) *rateLimiter {
+	if rpm <= 0 {
+		rpm = 60
+	}
+	return &rateLimiter{
+		capacity: float64(rpm),
+		refill:   float64(rpm) / 60.0,
+		buckets:  make(map[string]*bucket),
+	}
+}
+
+func (rl *rateLimiter) allow(key string) bool {
+	rl.mu.Lock()
+	defer rl.mu.Unlock()
+
+	now := time.Now()
+	b, ok := rl.buckets[key]
+	if !ok {
+		b = &bucket{tokens: rl.capacity, last: now}
+		rl.buckets[key] = b
+	}
+	b.tokens += now.Sub(b.last).Seconds() * rl.refill
+	if b.tokens > rl.capacity {
+		b.tokens = rl.capacity
+	}
+	b.last = now
+	if b.tokens >= 1 {
+		b.tokens--
+		return true
+	}
+	return false
 }

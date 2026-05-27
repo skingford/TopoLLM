@@ -8,10 +8,17 @@ import (
 	"os/signal"
 	"syscall"
 
+	"go.uber.org/zap"
+
 	"github.com/kingford/TopoLLM/internal/config"
+	"github.com/kingford/TopoLLM/internal/dispatch"
 	"github.com/kingford/TopoLLM/internal/observability"
 	"github.com/kingford/TopoLLM/internal/server"
 	"github.com/kingford/TopoLLM/internal/store"
+
+	// 注册内置适配器（通过 init() 自注册到 adaptor 注册表）。
+	_ "github.com/kingford/TopoLLM/internal/adaptor/anthropic"
+	_ "github.com/kingford/TopoLLM/internal/adaptor/openaicompat"
 )
 
 func main() {
@@ -44,7 +51,10 @@ func main() {
 	}
 	defer func() { _ = st.Close() }()
 
-	srv := server.New(cfg, log)
+	disp := dispatch.New(cfg.Channels)
+	log.Info("dispatcher initialized", zap.Int("channels", len(cfg.Channels)))
+
+	srv := server.New(cfg, log, disp)
 	if err := srv.Run(ctx); err != nil {
 		log.Sugar().Fatalf("server: %v", err)
 	}

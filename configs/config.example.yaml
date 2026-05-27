@@ -20,3 +20,42 @@ redis:
   addr: "localhost:6379"
   password: ""
   db: 0
+
+# 对外 API 令牌鉴权（Phase 5 将接入数据库管理）。
+auth:
+  enabled: false
+  # tokens:
+  #   - "sk-your-gateway-token"
+
+# 限流（每令牌/IP）。当前为单机内存令牌桶；分布式 Redis 版为后续阶段。
+rate_limit:
+  enabled: false
+  rpm: 60
+
+# 上游供应商渠道（数据驱动，支持自定义供应商）。
+# adaptor 支持 "openai"（OpenAI 兼容）与 "claude"（Anthropic Messages）。
+channels: []
+  # - name: deepseek
+  #   adaptor: openai
+  #   base_url: https://api.deepseek.com/v1
+  #   api_key: "sk-..."
+  #   models: ["deepseek-chat", "deepseek-reasoner"]
+  #   weight: 1
+  #   priority: 10
+  #   enabled: true
+  # - name: claude
+  #   adaptor: claude
+  #   base_url: https://api.anthropic.com
+  #   api_key: "sk-ant-..."
+  #   models: ["claude-3-5-sonnet", "claude-3-5-haiku"]
+  #   weight: 1
+  #   priority: 10
+  #   enabled: true
+  # - name: my-vllm          # 自定义供应商：自托管 OpenAI 兼容端点
+  #   adaptor: openai
+  #   base_url: http://10.0.0.5:8000/v1
+  #   api_key: "EMPTY"
+  #   models: ["qwen-local"]
+  #   weight: 1
+  #   priority: 5
+  #   enabled: true

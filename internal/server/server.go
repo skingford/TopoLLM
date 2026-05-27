@@ -11,6 +11,8 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/kingford/TopoLLM/internal/config"
+	"github.com/kingford/TopoLLM/internal/dispatch"
+	"github.com/kingford/TopoLLM/internal/gateway"
 	"github.com/kingford/TopoLLM/internal/middleware"
 )
 
@@ -22,7 +24,7 @@ type Server struct {
 }
 
 // New 构建一个配置好路由与中间件的 Server。
-func New(cfg *config.Config, log *zap.Logger) *Server {
+func New(cfg *config.Config, log *zap.Logger, d *dispatch.Dispatcher) *Server {
 	gin.SetMode(cfg.Server.Mode)
 	engine := gin.New()
 	engine.Use(
@@ -41,20 +43,23 @@ func New(cfg *config.Config, log *zap.Logger) *Server {
 			ReadHeaderTimeout: 10 * time.Second,
 		},
 	}
-	s.registerRoutes(engine)
+	s.registerRoutes(engine, d)
 	return s
 }
 
-func (s *Server) registerRoutes(e *gin.Engine) {
+func (s *Server) registerRoutes(e *gin.Engine, d *dispatch.Dispatcher) {
 	e.GET("/healthz", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"status": "ok"})
 	})
 
-	// 对外 OpenAI 兼容端点（Phase 1 起逐步实现）。
+	// 对外 OpenAI 兼容端点：鉴权 + 限流。
 	v1 := e.Group("/v1")
+	v1.Use(middleware.Auth(s.cfg.Auth))
+	v1.Use(middleware.RateLimit(s.cfg.RateLimit))
 	v1.GET("/models", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"object": "list", "data": []any{}})
 	})
+	v1.POST("/chat/completions", gateway.ChatCompletions(d, s.log))
 }
 
 // Run 启动服务并阻塞，直至 ctx 取消后优雅关闭。

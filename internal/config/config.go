@@ -10,10 +10,13 @@ import (
 
 // Config 是网关的全局配置。
 type Config struct {
-	Server   ServerConfig   `mapstructure:"server"`
-	Log      LogConfig      `mapstructure:"log"`
-	Database DatabaseConfig `mapstructure:"database"`
-	Redis    RedisConfig    `mapstructure:"redis"`
+	Server    ServerConfig    `mapstructure:"server"`
+	Log       LogConfig       `mapstructure:"log"`
+	Database  DatabaseConfig  `mapstructure:"database"`
+	Redis     RedisConfig     `mapstructure:"redis"`
+	Auth      AuthConfig      `mapstructure:"auth"`
+	RateLimit RateLimitConfig `mapstructure:"rate_limit"`
+	Channels  []ChannelConfig `mapstructure:"channels"`
 }
 
 // ServerConfig 控制 HTTP 服务行为。
@@ -41,6 +44,30 @@ type RedisConfig struct {
 	Addr     string `mapstructure:"addr"`
 	Password string `mapstructure:"password"`
 	DB       int    `mapstructure:"db"`
+}
+
+// AuthConfig 控制对外 API 令牌鉴权。Phase 5 将接入数据库管理。
+type AuthConfig struct {
+	Enabled bool     `mapstructure:"enabled"`
+	Tokens  []string `mapstructure:"tokens"` // 允许的对外 sk- 令牌
+}
+
+// RateLimitConfig 控制每令牌/IP 的请求限流。分布式 Redis 版为后续阶段。
+type RateLimitConfig struct {
+	Enabled bool `mapstructure:"enabled"`
+	RPM     int  `mapstructure:"rpm"` // 每分钟请求数
+}
+
+// ChannelConfig 描述一个上游供应商实例（数据驱动，支持自定义供应商）。
+type ChannelConfig struct {
+	Name     string   `mapstructure:"name"`
+	Adaptor  string   `mapstructure:"adaptor"`  // openai | claude | ...
+	BaseURL  string   `mapstructure:"base_url"`
+	APIKey   string   `mapstructure:"api_key"`
+	Models   []string `mapstructure:"models"` // 该渠道对外暴露的模型名
+	Weight   int      `mapstructure:"weight"`
+	Priority int      `mapstructure:"priority"`
+	Enabled  bool     `mapstructure:"enabled"`
 }
 
 // Load 从给定路径加载配置，并以环境变量覆盖（前缀 TOPOLLM_，点替换为下划线）。
@@ -82,6 +109,9 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("redis.enabled", false)
 	v.SetDefault("redis.addr", "localhost:6379")
 	v.SetDefault("redis.db", 0)
+	v.SetDefault("auth.enabled", false)
+	v.SetDefault("rate_limit.enabled", false)
+	v.SetDefault("rate_limit.rpm", 60)
 }
 
 func (c *Config) validate() error {
@@ -93,6 +123,9 @@ func (c *Config) validate() error {
 	}
 	if c.Redis.Enabled && c.Redis.Addr == "" {
 		return fmt.Errorf("redis.enabled but redis.addr is empty")
+	}
+	if c.RateLimit.Enabled && c.RateLimit.RPM <= 0 {
+		return fmt.Errorf("rate_limit.enabled but rate_limit.rpm <= 0")
 	}
 	return nil
 }
