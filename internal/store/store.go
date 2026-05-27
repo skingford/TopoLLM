@@ -10,6 +10,7 @@ import (
 	"gorm.io/gorm"
 
 	"github.com/kingford/TopoLLM/internal/config"
+	"github.com/kingford/TopoLLM/internal/model"
 )
 
 // Store 持有数据层连接。DB/Redis 未启用时对应字段为 nil。
@@ -26,6 +27,9 @@ func New(ctx context.Context, cfg *config.Config) (*Store, error) {
 		db, err := gorm.Open(mysql.Open(cfg.Database.DSN), &gorm.Config{})
 		if err != nil {
 			return nil, fmt.Errorf("connect database: %w", err)
+		}
+		if err := db.AutoMigrate(&model.UsageLog{}); err != nil {
+			return nil, fmt.Errorf("migrate: %w", err)
 		}
 		s.DB = db
 	}

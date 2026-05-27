@@ -11,6 +11,7 @@ import (
 
 	"go.uber.org/zap"
 
+	"github.com/kingford/TopoLLM/internal/billing"
 	"github.com/kingford/TopoLLM/internal/config"
 	"github.com/kingford/TopoLLM/internal/dispatch"
 	"github.com/kingford/TopoLLM/internal/observability"
@@ -57,9 +58,13 @@ func main() {
 		cfg.CircuitBreaker.Threshold,
 		time.Duration(cfg.CircuitBreaker.CooldownSeconds)*time.Second,
 	))
-	log.Info("dispatcher initialized", zap.Int("channels", len(cfg.Channels)))
+	bill := billing.New(cfg.Billing, st.DB, log)
+	log.Info("gateway initialized",
+		zap.Int("channels", len(cfg.Channels)),
+		zap.Bool("billing", cfg.Billing.Enabled),
+	)
 
-	srv := server.New(cfg, log, disp)
+	srv := server.New(cfg, log, disp, bill)
 	if err := srv.Run(ctx); err != nil {
 		log.Sugar().Fatalf("server: %v", err)
 	}

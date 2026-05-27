@@ -11,6 +11,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"go.uber.org/zap"
 
+	"github.com/kingford/TopoLLM/internal/billing"
 	"github.com/kingford/TopoLLM/internal/config"
 	"github.com/kingford/TopoLLM/internal/dispatch"
 	"github.com/kingford/TopoLLM/internal/gateway"
@@ -25,7 +26,7 @@ type Server struct {
 }
 
 // New 构建一个配置好路由与中间件的 Server。
-func New(cfg *config.Config, log *zap.Logger, d *dispatch.Dispatcher) *Server {
+func New(cfg *config.Config, log *zap.Logger, d *dispatch.Dispatcher, bill *billing.Service) *Server {
 	gin.SetMode(cfg.Server.Mode)
 	engine := gin.New()
 	engine.Use(
@@ -45,11 +46,11 @@ func New(cfg *config.Config, log *zap.Logger, d *dispatch.Dispatcher) *Server {
 			ReadHeaderTimeout: 10 * time.Second,
 		},
 	}
-	s.registerRoutes(engine, d)
+	s.registerRoutes(engine, d, bill)
 	return s
 }
 
-func (s *Server) registerRoutes(e *gin.Engine, d *dispatch.Dispatcher) {
+func (s *Server) registerRoutes(e *gin.Engine, d *dispatch.Dispatcher, bill *billing.Service) {
 	e.GET("/healthz", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"status": "ok"})
 	})
@@ -62,7 +63,7 @@ func (s *Server) registerRoutes(e *gin.Engine, d *dispatch.Dispatcher) {
 	v1.GET("/models", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"object": "list", "data": []any{}})
 	})
-	v1.POST("/chat/completions", gateway.ChatCompletions(d, s.log))
+	v1.POST("/chat/completions", gateway.ChatCompletions(d, bill, s.log))
 }
 
 // Run 启动服务并阻塞，直至 ctx 取消后优雅关闭。

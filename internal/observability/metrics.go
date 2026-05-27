@@ -31,4 +31,10 @@ var (
 		Name: "topollm_relay_tokens_total",
 		Help: "经网关计量的 token 用量（kind=prompt|completion）。",
 	}, []string{"channel", "model", "kind"})
+
+	// BillingCost 统计累计计费费用。
+	BillingCost = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "topollm_billing_cost_total",
+		Help: "累计计费费用（按渠道/模型）。",
+	}, []string{"channel", "model"})
 )

@@ -11,14 +11,16 @@ import (
 	"go.uber.org/zap"
 
 	_ "github.com/kingford/TopoLLM/internal/adaptor/openaicompat" // 注册 "openai" 适配器
+	"github.com/kingford/TopoLLM/internal/billing"
 	"github.com/kingford/TopoLLM/internal/config"
 	"github.com/kingford/TopoLLM/internal/dispatch"
 )
 
 func newEngine(d *dispatch.Dispatcher) *gin.Engine {
 	gin.SetMode(gin.TestMode)
+	bill := billing.New(config.BillingConfig{}, nil, zap.NewNop())
 	e := gin.New()
-	e.POST("/v1/chat/completions", ChatCompletions(d, zap.NewNop()))
+	e.POST("/v1/chat/completions", ChatCompletions(d, bill, zap.NewNop()))
 	return e
 }
 
@@ -115,5 +117,28 @@ func TestChatCompletions_BadRequest(t *testing.T) {
 	rec := post(newEngine(dispatch.New(nil)), `{"messages":[]}`)
 	if rec.Code != http.StatusBadRequest {
 		t.Errorf("status = %d, want 400", rec.Code)
+	}
+}
+
+func TestChatCompletions_QuotaExceeded(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	// 配额为 0 的令牌应被拒（402）。
+	bill := billing.New(config.BillingConfig{
+		Enabled: true,
+		Pricing: map[string]config.Price{"default": {Input: 1, Output: 1}},
+		Quotas:  map[string]float64{"sk-empty": 0},
+	}, nil, zap.NewNop())
+	d := dispatch.New([]config.ChannelConfig{
+		{Name: "test", Adaptor: "openai", BaseURL: "http://127.0.0.1:1", Models: []string{"gpt"}, Enabled: true},
+	})
+	e := gin.New()
+	e.POST("/v1/chat/completions", ChatCompletions(d, bill, zap.NewNop()))
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"gpt","max_tokens":100,"messages":[{"role":"user","content":"hi"}]}`))
+	req.Header.Set("Authorization", "Bearer sk-empty")
+	rec := httptest.NewRecorder()
+	e.ServeHTTP(rec, req)
+	if rec.Code != http.StatusPaymentRequired {
+		t.Errorf("status = %d, want 402", rec.Code)
 	}
 }

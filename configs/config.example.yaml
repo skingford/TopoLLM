@@ -21,7 +21,7 @@ redis:
   password: ""
   db: 0
 
-# 对外 API 令牌鉴权（Phase 5 将接入数据库管理）。
+# 对外 API 令牌鉴权。
 auth:
   enabled: false
   # tokens:
@@ -36,6 +36,17 @@ rate_limit:
 circuit_breaker:
   threshold: 5
   cooldown_seconds: 30
+
+# 计费与配额。enabled=false 时仅记录用量、不强制配额。
+# pricing：每百万 token 价格，"default" 为兜底。quotas：每令牌总额度（缺省不限）。
+# 用量在 database.enabled 时落库（usage_logs 表）。
+billing:
+  enabled: false
+  pricing:
+    default: { input: 0.0, output: 0.0 }
+    # "deepseek-chat": { input: 0.14, output: 0.28 }
+  quotas: {}
+    # "sk-your-gateway-token": 100.0
 
 # 上游供应商渠道（数据驱动，支持自定义供应商）。
 # adaptor 支持："openai"（OpenAI 兼容，含 DeepSeek/通义/Kimi/豆包/Grok 等）、

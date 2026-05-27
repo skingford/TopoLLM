@@ -1,4 +1,4 @@
-// Package model 定义网关的持久化数据模型（GORM）。Phase 0 仅占位，后续阶段完善。
+// Package model 定义网关的持久化数据模型（GORM）。
 package model
 
 import "time"
@@ -24,4 +24,18 @@ type Token struct {
 	Enabled   bool      `gorm:"default:true" json:"enabled"`
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
+}
+
+// UsageLog 记录每次成功转发的用量与费用（写入独立日志库以隔离高频写）。
+type UsageLog struct {
+	ID               uint      `gorm:"primaryKey" json:"id"`
+	RequestID        string    `gorm:"size:64;index" json:"request_id"`
+	TokenKey         string    `gorm:"size:32;index" json:"token_key"` // 脱敏（尾 4 位）
+	Channel          string    `gorm:"size:128" json:"channel"`
+	Model            string    `gorm:"size:128;index" json:"model"`
+	PromptTokens     int       `json:"prompt_tokens"`
+	CompletionTokens int       `json:"completion_tokens"`
+	TotalTokens      int       `json:"total_tokens"`
+	Cost             float64   `json:"cost"`
+	CreatedAt        time.Time `gorm:"index" json:"created_at"`
 }

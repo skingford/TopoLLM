@@ -17,6 +17,7 @@ type Config struct {
 	Auth           AuthConfig           `mapstructure:"auth"`
 	RateLimit      RateLimitConfig      `mapstructure:"rate_limit"`
 	CircuitBreaker CircuitBreakerConfig `mapstructure:"circuit_breaker"`
+	Billing        BillingConfig        `mapstructure:"billing"`
 	Channels       []ChannelConfig      `mapstructure:"channels"`
 }
 
@@ -47,28 +48,41 @@ type RedisConfig struct {
 	DB       int    `mapstructure:"db"`
 }
 
-// AuthConfig 控制对外 API 令牌鉴权。Phase 5 将接入数据库管理。
+// AuthConfig 控制对外 API 令牌鉴权。
 type AuthConfig struct {
 	Enabled bool     `mapstructure:"enabled"`
 	Tokens  []string `mapstructure:"tokens"` // 允许的对外 sk- 令牌
 }
 
-// RateLimitConfig 控制每令牌/IP 的请求限流。分布式 Redis 版为后续阶段。
+// RateLimitConfig 控制每令牌/IP 的请求限流。
 type RateLimitConfig struct {
 	Enabled bool `mapstructure:"enabled"`
 	RPM     int  `mapstructure:"rpm"` // 每分钟请求数
 }
 
-// CircuitBreakerConfig 控制渠道熔断：连续失败达阈值后熔断冷却。
+// CircuitBreakerConfig 控制渠道熔断。
 type CircuitBreakerConfig struct {
 	Threshold       int `mapstructure:"threshold"`        // 触发熔断的连续失败数
 	CooldownSeconds int `mapstructure:"cooldown_seconds"` // 熔断冷却时长（秒）
 }
 
+// Price 是某模型的单价（每百万 token）。
+type Price struct {
+	Input  float64 `mapstructure:"input"`
+	Output float64 `mapstructure:"output"`
+}
+
+// BillingConfig 控制计费与配额。Enabled=false 时仅记录用量、不强制配额。
+type BillingConfig struct {
+	Enabled bool               `mapstructure:"enabled"`
+	Pricing map[string]Price   `mapstructure:"pricing"` // model -> 单价；"default" 为兜底
+	Quotas  map[string]float64 `mapstructure:"quotas"`  // token -> 总额度
+}
+
 // ChannelConfig 描述一个上游供应商实例（数据驱动，支持自定义供应商）。
 type ChannelConfig struct {
 	Name     string   `mapstructure:"name"`
-	Adaptor  string   `mapstructure:"adaptor"`  // openai | claude | ...
+	Adaptor  string   `mapstructure:"adaptor"`  // openai | claude | gemini | ...
 	BaseURL  string   `mapstructure:"base_url"`
 	APIKey   string   `mapstructure:"api_key"`
 	Models   []string `mapstructure:"models"` // 该渠道对外暴露的模型名
@@ -121,6 +135,7 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("rate_limit.rpm", 60)
 	v.SetDefault("circuit_breaker.threshold", 5)
 	v.SetDefault("circuit_breaker.cooldown_seconds", 30)
+	v.SetDefault("billing.enabled", false)
 }
 
 func (c *Config) validate() error {
