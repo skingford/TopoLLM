@@ -20,6 +20,7 @@ type Capabilities struct {
 }
 
 // Channel 是一个上游供应商实例（数据驱动，运行时可定义）。
+// Extra 承载 adaptor 专属参数（如 azure 的 api_version / deployment）。
 type Channel struct {
 	Name     string
 	Adaptor  string
@@ -27,6 +28,7 @@ type Channel struct {
 	APIKey   string
 	Weight   int
 	Priority int
+	Extra    map[string]string
 }
 
 // Request 是经网关解析后的统一调用请求（对外 OpenAI 格式）。
@@ -42,8 +44,14 @@ type Adaptor interface {
 	Name() string
 	// Capabilities 返回该适配器支持的能力。
 	Capabilities() Capabilities
-	// SetupRequest 构造面向上游的 HTTP 请求（含鉴权、URL、body 转换）。
+	// SetupRequest 构造面向上游的 chat/completions 请求（含鉴权、URL、body 转换）。
 	SetupRequest(ctx context.Context, in *Request, ch *Channel) (*http.Request, error)
 	// RelayResponse 将上游响应写回 w（处理流式与非流式），并尽力返回用量。
 	RelayResponse(w http.ResponseWriter, resp *http.Response, stream bool) (*relay.Usage, error)
+}
+
+// EmbeddingsAdaptor 是可选能力接口：支持 /embeddings 的适配器实现它。
+// 调度层通过类型断言探测，未实现者视为不支持 embeddings。
+type EmbeddingsAdaptor interface {
+	SetupEmbeddings(ctx context.Context, in *Request, ch *Channel) (*http.Request, error)
 }

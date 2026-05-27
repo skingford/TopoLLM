@@ -107,6 +107,8 @@ type ChannelConfig struct {
 	Weight   int      `mapstructure:"weight" json:"weight"`
 	Priority int      `mapstructure:"priority" json:"priority"`
 	Enabled  bool     `mapstructure:"enabled" json:"enabled"`
+	// Extra 承载 adaptor 专属参数（如 azure 的 api_version / deployment）。
+	Extra map[string]string `mapstructure:"extra" json:"extra,omitempty"`
 }
 
 // Load 从给定路径加载配置，并以环境变量覆盖（前缀 TOPOLLM_，点替换为下划线）。

@@ -67,7 +67,8 @@ plugins: []
 
 # 上游供应商渠道（数据驱动，支持自定义供应商）。
 # adaptor 支持："openai"（OpenAI 兼容，含 DeepSeek/通义/Kimi/豆包/Grok 等）、
-#               "claude"（Anthropic Messages）、"gemini"（Google 原生）。
+#               "claude"（Anthropic Messages）、"gemini"（Google 原生）、"azure"（Azure OpenAI）。
+# /v1/embeddings 由 openai / azure 适配器支持。
 channels: []
   # - name: deepseek
   #   adaptor: openai
@@ -95,6 +96,14 @@ channels: []
   #   base_url: https://generativelanguage.googleapis.com
   #   api_key: "AIza..."
   #   models: ["gemini-2.5-pro", "gemini-2.5-flash"]
+  #   priority: 10
+  #   enabled: true
+  # - name: azure              # Azure OpenAI（extra 提供 api_version / deployment）
+  #   adaptor: azure
+  #   base_url: https://my-resource.openai.azure.com
+  #   api_key: "azure-key"
+  #   models: ["gpt-4o", "text-embedding-3-small"]
+  #   extra: { api_version: "2024-10-21", deployment: "gpt-4o" }
   #   priority: 10
   #   enabled: true
   # - name: my-vllm            # 自定义供应商：自托管 OpenAI 兼容端点

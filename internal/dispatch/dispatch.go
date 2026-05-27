@@ -87,6 +87,7 @@ func (d *Dispatcher) addLocked(cc config.ChannelConfig) {
 		APIKey:   cc.APIKey,
 		Weight:   max(cc.Weight, 1),
 		Priority: cc.Priority,
+		Extra:    cc.Extra,
 	}
 	d.channels[cc.Name] = &channelMeta{ch: ch, models: cc.Models}
 	for _, m := range cc.Models {

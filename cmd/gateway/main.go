@@ -21,6 +21,7 @@ import (
 
 	// 注册内置适配器与插件（通过 init() 自注册）。
 	_ "github.com/kingford/TopoLLM/internal/adaptor/anthropic"
+	_ "github.com/kingford/TopoLLM/internal/adaptor/azure"
 	_ "github.com/kingford/TopoLLM/internal/adaptor/gemini"
 	_ "github.com/kingford/TopoLLM/internal/adaptor/openaicompat"
 	_ "github.com/kingford/TopoLLM/internal/plugin/builtin"
