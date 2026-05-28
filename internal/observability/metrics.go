@@ -37,4 +37,16 @@ var (
 		Name: "topollm_billing_cost_total",
 		Help: "累计计费费用（按渠道/模型）。",
 	}, []string{"channel", "model"})
+
+	// CacheHits 统计响应缓存命中次数。
+	CacheHits = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "topollm_cache_hits_total",
+		Help: "响应缓存命中次数（按模型）。",
+	}, []string{"model"})
+
+	// CacheMisses 统计响应缓存未命中次数。
+	CacheMisses = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "topollm_cache_misses_total",
+		Help: "响应缓存未命中次数（按模型）。",
+	}, []string{"model"})
 )

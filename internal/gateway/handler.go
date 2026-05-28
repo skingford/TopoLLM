@@ -3,6 +3,7 @@
 package gateway
 
 import (
+	"bytes"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -14,6 +15,7 @@ import (
 
 	"github.com/kingford/TopoLLM/internal/adaptor"
 	"github.com/kingford/TopoLLM/internal/billing"
+	"github.com/kingford/TopoLLM/internal/cache"
 	"github.com/kingford/TopoLLM/internal/dispatch"
 	"github.com/kingford/TopoLLM/internal/moderation"
 	"github.com/kingford/TopoLLM/internal/observability"
@@ -21,6 +23,30 @@ import (
 	"github.com/kingford/TopoLLM/internal/relay"
 	"github.com/kingford/TopoLLM/internal/tokenizer"
 )
+
+// captureWriter 包装 ResponseWriter，把写出的 body 同步存入 buf 以供缓存。
+type captureWriter struct {
+	http.ResponseWriter
+	buf    *bytes.Buffer
+	status int
+}
+
+func (w *captureWriter) WriteHeader(status int) {
+	w.status = status
+	w.ResponseWriter.WriteHeader(status)
+}
+
+func (w *captureWriter) Write(p []byte) (int, error) {
+	w.buf.Write(p)
+	return w.ResponseWriter.Write(p)
+}
+
+// Flush 透传到底层（gin 的 ResponseWriter 支持 Flush）。
+func (w *captureWriter) Flush() {
+	if f, ok := w.ResponseWriter.(http.Flusher); ok {
+		f.Flush()
+	}
+}
 
 const maxFailoverAttempts = 3
 
@@ -33,7 +59,7 @@ var upstreamClient = &http.Client{
 }
 
 // ChatCompletions 返回 /v1/chat/completions 的处理器。
-func ChatCompletions(d *dispatch.Dispatcher, bill *billing.Service, chain *plugin.Chain, moderator *moderation.Moderator, log *zap.Logger) gin.HandlerFunc {
+func ChatCompletions(d *dispatch.Dispatcher, bill *billing.Service, chain *plugin.Chain, moderator *moderation.Moderator, cacheSvc *cache.Service, log *zap.Logger) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		body, err := io.ReadAll(c.Request.Body)
 		if err != nil {
@@ -61,6 +87,23 @@ func ChatCompletions(d *dispatch.Dispatcher, bill *billing.Service, chain *plugi
 			return
 		}
 		body = pctx.Body // 插件可能已改写请求体
+
+		// 响应缓存查找（非流式、可计算键时）：命中即短路返回，不调用上游、不计费。
+		var cacheKey string
+		if cacheSvc.Enabled() && !head.Stream {
+			if k, ok := cacheSvc.KeyForChat(body); ok {
+				cacheKey = k
+				if hit, ok := cacheSvc.Get(c.Request.Context(), k); ok {
+					observability.CacheHits.WithLabelValues(head.Model).Inc()
+					c.Writer.Header().Set("Content-Type", "application/json")
+					c.Writer.Header().Set("X-TopoLLM-Cache", "HIT")
+					c.Writer.WriteHeader(http.StatusOK)
+					_, _ = c.Writer.Write(hit)
+					return
+				}
+				observability.CacheMisses.WithLabelValues(head.Model).Inc()
+			}
+		}
 
 		// 计费三阶段（1/3）：预扣估算费用。
 		reserved, err := bill.Reserve(token, head.Model, tokenizer.CountChatMessages(body, head.Model), head.MaxTokens)
@@ -124,16 +167,27 @@ func ChatCompletions(d *dispatch.Dispatcher, bill *billing.Service, chain *plugi
 				continue
 			}
 
-			// 输出审核：启用时用审核 Writer 包装，流式增量截断/非流式整体替换。
-			out := http.ResponseWriter(c.Writer)
+			// 写入链：(adaptor -> [moderation -> ] [capture -> ] c.Writer)
+			// capture 仅在缓存键存在（非流式）时启用，用于落库；moderation 在它之内、之前。
+			clientWriter := http.ResponseWriter(c.Writer)
+			var cap *captureWriter
+			if cacheKey != "" {
+				cap = &captureWriter{ResponseWriter: c.Writer, buf: &bytes.Buffer{}}
+				clientWriter = cap
+			}
+			out := clientWriter
 			var mw *moderation.Writer
 			if moderator.Enabled() {
-				mw = moderator.Wrap(c.Writer, head.Stream)
+				mw = moderator.Wrap(clientWriter, head.Stream)
 				out = mw
 			}
 			usage, err := ad.RelayResponse(out, resp, head.Stream)
 			if mw != nil {
 				mw.Finalize()
+			}
+			// 成功 + 非流式 + 未被审核拦截 + 状态 200，写入缓存。
+			if err == nil && cap != nil && cap.status == http.StatusOK && (mw == nil || !mw.Blocked()) {
+				cacheSvc.Set(c.Request.Context(), cacheKey, cap.buf.Bytes())
 			}
 			if err != nil {
 				log.Error("relay response failed", zap.String("channel", ch.Name), zap.Error(err))

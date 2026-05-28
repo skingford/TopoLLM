@@ -63,6 +63,12 @@ output_moderation:
   words: []
     # - "违禁词1"
 
+# 响应缓存（精确匹配 + 规范化基础语义缓存）。Redis 启用时优先用之，否则单机内存。
+# 流式不缓存；命中即短路、不计费；非流式成功响应在转发后写入。
+semantic_cache:
+  enabled: false
+  ttl_seconds: 300
+
 # 运维管理 API（/admin，需 admin 令牌；含 SSRF 出口防护）。
 admin:
   enabled: false
@@ -70,7 +76,7 @@ admin:
   allow_private_upstreams: false  # 是否允许内网上游（自托管 vLLM/Ollama 时设 true）
   allowed_upstream_hosts: []      # SSRF 白名单主机（精确匹配）
 
-# 请求前置插件（按 priority 降序执行，可短路拒绝）。内置：sensitive_words、audit。
+# 请求前置插件（按 priority 降序执行，可短路拒绝）。内置：sensitive_words、audit、pii_mask。
 plugins: []
   # - name: audit
   #   enabled: true
@@ -80,6 +86,12 @@ plugins: []
   #   priority: 50
   #   options:
   #     words: ["违禁词1", "违禁词2"]
+  # - name: pii_mask                  # 内置 PII 脱敏（email/phone/SSN/card/IP）
+  #   enabled: true
+  #   priority: 90
+  #   options:
+  #     custom:
+  #       - { pattern: "SECRET-\\d+", replace: "[REDACTED]" }
 
 # 上游供应商渠道（数据驱动，支持自定义供应商）。
 # adaptor 支持："openai"（OpenAI 兼容，含 DeepSeek/通义/Kimi/豆包/Grok 等）、

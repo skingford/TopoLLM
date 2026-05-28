@@ -12,6 +12,7 @@ import (
 
 	_ "github.com/kingford/TopoLLM/internal/adaptor/openaicompat" // 注册 "openai" 适配器
 	"github.com/kingford/TopoLLM/internal/billing"
+	"github.com/kingford/TopoLLM/internal/cache"
 	"github.com/kingford/TopoLLM/internal/config"
 	"github.com/kingford/TopoLLM/internal/dispatch"
 	"github.com/kingford/TopoLLM/internal/moderation"
@@ -28,7 +29,7 @@ func newEngineWith(d *dispatch.Dispatcher, billCfg config.BillingConfig, plugins
 	bill := billing.New(billCfg, nil, zap.NewNop())
 	chain, _ := plugin.BuildChain(plugins, zap.NewNop())
 	e := gin.New()
-	e.POST("/v1/chat/completions", ChatCompletions(d, bill, chain, moderation.New(false, nil), zap.NewNop()))
+	e.POST("/v1/chat/completions", ChatCompletions(d, bill, chain, moderation.New(false, nil), cache.New(config.SemanticCacheConfig{}, nil), zap.NewNop()))
 	return e
 }
 
@@ -181,7 +182,7 @@ func TestChatCompletions_OutputModerationStream(t *testing.T) {
 	e := gin.New()
 	chain, _ := plugin.BuildChain(nil, zap.NewNop())
 	mod := moderation.New(true, []string{"forbidden"})
-	e.POST("/v1/chat/completions", ChatCompletions(d, billing.New(config.BillingConfig{}, nil, zap.NewNop()), chain, mod, zap.NewNop()))
+	e.POST("/v1/chat/completions", ChatCompletions(d, billing.New(config.BillingConfig{}, nil, zap.NewNop()), chain, mod, cache.New(config.SemanticCacheConfig{}, nil), zap.NewNop()))
 
 	rec := post(e, `{"model":"gpt","stream":true,"messages":[]}`)
 	out := rec.Body.String()

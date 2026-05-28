@@ -19,6 +19,7 @@ type Config struct {
 	CircuitBreaker CircuitBreakerConfig `mapstructure:"circuit_breaker"`
 	HealthCheck      HealthCheckConfig      `mapstructure:"health_check"`
 	QuotaReset       QuotaResetConfig       `mapstructure:"quota_reset"`
+	SemanticCache    SemanticCacheConfig    `mapstructure:"semantic_cache"`
 	Billing          BillingConfig          `mapstructure:"billing"`
 	Admin            AdminConfig            `mapstructure:"admin"`
 	OutputModeration OutputModerationConfig `mapstructure:"output_moderation"`
@@ -87,6 +88,13 @@ type HealthCheckConfig struct {
 type QuotaResetConfig struct {
 	Enabled         bool `mapstructure:"enabled"`
 	IntervalSeconds int  `mapstructure:"interval_seconds"`
+}
+
+// SemanticCacheConfig 控制响应缓存。当前为精确匹配（含规范化）的基础语义缓存；
+// 未来扩展点：embedding + 相似度检索。Redis 启用时优先用之，否则单机内存。
+type SemanticCacheConfig struct {
+	Enabled    bool `mapstructure:"enabled"`
+	TTLSeconds int  `mapstructure:"ttl_seconds"`
 }
 
 // Price 是某模型的单价（每百万 token）。
@@ -178,6 +186,7 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("circuit_breaker.cooldown_seconds", 30)
 	v.SetDefault("health_check.interval_seconds", 60)
 	v.SetDefault("quota_reset.interval_seconds", 86400)
+	v.SetDefault("semantic_cache.ttl_seconds", 300)
 	v.SetDefault("billing.enabled", false)
 	v.SetDefault("admin.enabled", false)
 }

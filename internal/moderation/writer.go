@@ -58,6 +58,9 @@ func (w *Writer) Flush() {
 	}
 }
 
+// Blocked 返回本次响应是否因审核被截断或整体替换。
+func (w *Writer) Blocked() bool { return w.blocked }
+
 // WriteHeader：流式立即转发；非流式延迟到 Finalize（以便整体替换）。
 func (w *Writer) WriteHeader(status int) {
 	if w.stream {
@@ -92,6 +95,7 @@ func (w *Writer) Finalize() {
 	}
 	body := w.buf.Bytes()
 	if w.hit([]byte(extractMessageContent(body))) {
+		w.blocked = true
 		w.ResponseWriter.Header().Set("Content-Type", "application/json")
 		w.ResponseWriter.WriteHeader(http.StatusOK)
 		_, _ = w.ResponseWriter.Write([]byte(`{"error":{"message":"response blocked by content policy","type":"content_filter"}}`))
