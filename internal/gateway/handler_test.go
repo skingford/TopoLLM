@@ -14,6 +14,7 @@ import (
 	"github.com/kingford/TopoLLM/internal/billing"
 	"github.com/kingford/TopoLLM/internal/config"
 	"github.com/kingford/TopoLLM/internal/dispatch"
+	"github.com/kingford/TopoLLM/internal/moderation"
 	"github.com/kingford/TopoLLM/internal/plugin"
 	_ "github.com/kingford/TopoLLM/internal/plugin/builtin" // 注册内置插件
 )
@@ -27,7 +28,7 @@ func newEngineWith(d *dispatch.Dispatcher, billCfg config.BillingConfig, plugins
 	bill := billing.New(billCfg, nil, zap.NewNop())
 	chain, _ := plugin.BuildChain(plugins, zap.NewNop())
 	e := gin.New()
-	e.POST("/v1/chat/completions", ChatCompletions(d, bill, chain, zap.NewNop()))
+	e.POST("/v1/chat/completions", ChatCompletions(d, bill, chain, moderation.New(false, nil), zap.NewNop()))
 	return e
 }
 
@@ -161,5 +162,36 @@ func TestChatCompletions_PluginBlocks(t *testing.T) {
 		`{"model":"gpt","messages":[{"role":"user","content":"this is forbidden"}]}`)
 	if rec.Code != http.StatusBadRequest {
 		t.Errorf("status = %d, want 400 (blocked by sensitive_words)", rec.Code)
+	}
+}
+
+func TestChatCompletions_OutputModerationStream(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = w.Write([]byte("data: {\"choices\":[{\"delta\":{\"content\":\"ok \"}}]}\n"))
+		_, _ = w.Write([]byte("data: {\"choices\":[{\"delta\":{\"content\":\"forbidden\"}}]}\n"))
+		_, _ = w.Write([]byte("data: [DONE]\n"))
+	}))
+	defer upstream.Close()
+
+	d := dispatch.New([]config.ChannelConfig{
+		{Name: "t", Adaptor: "openai", BaseURL: upstream.URL, Models: []string{"gpt"}, Enabled: true},
+	})
+	gin.SetMode(gin.TestMode)
+	e := gin.New()
+	chain, _ := plugin.BuildChain(nil, zap.NewNop())
+	mod := moderation.New(true, []string{"forbidden"})
+	e.POST("/v1/chat/completions", ChatCompletions(d, billing.New(config.BillingConfig{}, nil, zap.NewNop()), chain, mod, zap.NewNop()))
+
+	rec := post(e, `{"model":"gpt","stream":true,"messages":[]}`)
+	out := rec.Body.String()
+	if !strings.Contains(out, "ok ") {
+		t.Errorf("clean prefix should pass: %s", out)
+	}
+	if strings.Contains(out, "forbidden") {
+		t.Errorf("banned output should be withheld: %s", out)
+	}
+	if !strings.Contains(out, "content_filter") {
+		t.Errorf("should emit content_filter on output moderation: %s", out)
 	}
 }

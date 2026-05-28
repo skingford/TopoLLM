@@ -52,6 +52,12 @@ billing:
   quotas: {}
     # "sk-your-gateway-token": 100.0
 
+# 输出内容审核：流式增量截断（命中即发 content_filter 结束帧），非流式整体替换。
+output_moderation:
+  enabled: false
+  words: []
+    # - "违禁词1"
+
 # 运维管理 API（/admin，需 admin 令牌；含 SSRF 出口防护）。
 admin:
   enabled: false

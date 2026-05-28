@@ -15,6 +15,7 @@ import (
 	"github.com/kingford/TopoLLM/internal/adaptor"
 	"github.com/kingford/TopoLLM/internal/billing"
 	"github.com/kingford/TopoLLM/internal/dispatch"
+	"github.com/kingford/TopoLLM/internal/moderation"
 	"github.com/kingford/TopoLLM/internal/observability"
 	"github.com/kingford/TopoLLM/internal/plugin"
 	"github.com/kingford/TopoLLM/internal/relay"
@@ -34,7 +35,7 @@ var upstreamClient = &http.Client{
 }
 
 // ChatCompletions 返回 /v1/chat/completions 的处理器。
-func ChatCompletions(d *dispatch.Dispatcher, bill *billing.Service, chain *plugin.Chain, log *zap.Logger) gin.HandlerFunc {
+func ChatCompletions(d *dispatch.Dispatcher, bill *billing.Service, chain *plugin.Chain, moderator *moderation.Moderator, log *zap.Logger) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		body, err := io.ReadAll(c.Request.Body)
 		if err != nil {
@@ -125,7 +126,17 @@ func ChatCompletions(d *dispatch.Dispatcher, bill *billing.Service, chain *plugi
 				continue
 			}
 
-			usage, err := ad.RelayResponse(c.Writer, resp, head.Stream)
+			// 输出审核：启用时用审核 Writer 包装，流式增量截断/非流式整体替换。
+			out := http.ResponseWriter(c.Writer)
+			var mw *moderation.Writer
+			if moderator.Enabled() {
+				mw = moderator.Wrap(c.Writer, head.Stream)
+				out = mw
+			}
+			usage, err := ad.RelayResponse(out, resp, head.Stream)
+			if mw != nil {
+				mw.Finalize()
+			}
 			if err != nil {
 				log.Error("relay response failed", zap.String("channel", ch.Name), zap.Error(err))
 				observability.RelayRequests.WithLabelValues(ch.Name, head.Model, "error").Inc()

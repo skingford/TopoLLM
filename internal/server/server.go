@@ -18,6 +18,7 @@ import (
 	"github.com/kingford/TopoLLM/internal/dispatch"
 	"github.com/kingford/TopoLLM/internal/gateway"
 	"github.com/kingford/TopoLLM/internal/middleware"
+	"github.com/kingford/TopoLLM/internal/moderation"
 	"github.com/kingford/TopoLLM/internal/plugin"
 	"github.com/kingford/TopoLLM/internal/security"
 )
@@ -67,7 +68,8 @@ func (s *Server) registerRoutes(e *gin.Engine, d *dispatch.Dispatcher, bill *bil
 	v1.GET("/models", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"object": "list", "data": []any{}})
 	})
-	v1.POST("/chat/completions", gateway.ChatCompletions(d, bill, chain, s.log))
+	moderator := moderation.New(s.cfg.OutputModeration.Enabled, s.cfg.OutputModeration.Words)
+	v1.POST("/chat/completions", gateway.ChatCompletions(d, bill, chain, moderator, s.log))
 	v1.POST("/embeddings", gateway.Embeddings(d, bill, chain, s.log))
 	v1.POST("/images/generations", gateway.Images(d, bill, chain, s.log))
 	v1.POST("/rerank", gateway.Rerank(d, bill, chain, s.log))

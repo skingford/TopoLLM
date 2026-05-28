@@ -18,10 +18,17 @@ type Config struct {
 	RateLimit      RateLimitConfig      `mapstructure:"rate_limit"`
 	CircuitBreaker CircuitBreakerConfig `mapstructure:"circuit_breaker"`
 	HealthCheck    HealthCheckConfig    `mapstructure:"health_check"`
-	Billing        BillingConfig        `mapstructure:"billing"`
-	Admin          AdminConfig          `mapstructure:"admin"`
-	Plugins        []PluginConfig       `mapstructure:"plugins"`
-	Channels       []ChannelConfig      `mapstructure:"channels"`
+	Billing          BillingConfig          `mapstructure:"billing"`
+	Admin            AdminConfig            `mapstructure:"admin"`
+	OutputModeration OutputModerationConfig `mapstructure:"output_moderation"`
+	Plugins          []PluginConfig         `mapstructure:"plugins"`
+	Channels         []ChannelConfig        `mapstructure:"channels"`
+}
+
+// OutputModerationConfig 控制输出内容审核（敏感词）。
+type OutputModerationConfig struct {
+	Enabled bool     `mapstructure:"enabled"`
+	Words   []string `mapstructure:"words"`
 }
 
 // ServerConfig 控制 HTTP 服务行为。
