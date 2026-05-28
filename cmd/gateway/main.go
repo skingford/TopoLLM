@@ -72,6 +72,10 @@ func main() {
 		hc := task.NewHealthChecker(disp, time.Duration(cfg.HealthCheck.IntervalSeconds)*time.Second, log)
 		go hc.Run(ctx)
 	}
+	if cfg.QuotaReset.Enabled {
+		qr := task.NewQuotaResetter(bill, cfg.Billing.Quotas, time.Duration(cfg.QuotaReset.IntervalSeconds)*time.Second, log)
+		go qr.Run(ctx)
+	}
 	log.Info("gateway initialized",
 		zap.Int("channels", len(cfg.Channels)),
 		zap.Bool("billing", cfg.Billing.Enabled),

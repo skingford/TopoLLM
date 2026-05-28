@@ -17,6 +17,7 @@ type quotaStore interface {
 	Reserve(token string, amount float64) error
 	Settle(token string, reserved, actual float64)
 	Balance(token string) float64
+	Reset(token string, amount float64)
 }
 
 // Service 统一计费：定价、配额（三阶段消费）、用量记录。
@@ -55,6 +56,18 @@ func (s *Service) Reserve(token, modelName string, promptTokens, maxTokens int) 
 // Refund 请求失败时全额退还预扣。
 func (s *Service) Refund(token string, reserved float64) {
 	s.quota.Settle(token, reserved, 0)
+}
+
+// Balance 返回某令牌当前的配额余额（管理/调试用）。
+func (s *Service) Balance(token string) float64 {
+	return s.quota.Balance(token)
+}
+
+// ResetAll 按给定 token->amount 表重置余额（如周期性配额刷新）。
+func (s *Service) ResetAll(initial map[string]float64) {
+	for token, amount := range initial {
+		s.quota.Reset(token, amount)
+	}
 }
 
 // Settle 结算实际费用：退还差额、累加费用指标、记录用量。

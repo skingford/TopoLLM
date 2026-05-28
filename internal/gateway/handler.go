@@ -19,12 +19,10 @@ import (
 	"github.com/kingford/TopoLLM/internal/observability"
 	"github.com/kingford/TopoLLM/internal/plugin"
 	"github.com/kingford/TopoLLM/internal/relay"
+	"github.com/kingford/TopoLLM/internal/tokenizer"
 )
 
-const (
-	maxFailoverAttempts = 3
-	charsPerToken       = 4 // 粗略的 prompt token 估算（约 4 字符/token）
-)
+const maxFailoverAttempts = 3
 
 // upstreamClient 不设整体 Timeout，以支持长连接流式；取消由请求 context 控制。
 var upstreamClient = &http.Client{
@@ -65,7 +63,7 @@ func ChatCompletions(d *dispatch.Dispatcher, bill *billing.Service, chain *plugi
 		body = pctx.Body // 插件可能已改写请求体
 
 		// 计费三阶段（1/3）：预扣估算费用。
-		reserved, err := bill.Reserve(token, head.Model, len(body)/charsPerToken, head.MaxTokens)
+		reserved, err := bill.Reserve(token, head.Model, tokenizer.CountChatMessages(body, head.Model), head.MaxTokens)
 		if err != nil {
 			writeError(c, http.StatusPaymentRequired, "insufficient quota for model: "+head.Model)
 			return

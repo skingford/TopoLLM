@@ -67,3 +67,13 @@ func (q *dbQuota) Balance(token string) float64 {
 	}
 	return row.Balance
 }
+
+// Reset 把指定令牌的余额重置为 amount。
+func (q *dbQuota) Reset(token string, amount float64) {
+	if !q.tracked[token] {
+		return
+	}
+	if err := q.db.Model(&model.TokenQuota{}).Where("token_key = ?", token).Update("balance", amount).Error; err != nil {
+		q.log.Warn("quota reset db error", zap.Error(err))
+	}
+}

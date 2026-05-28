@@ -17,7 +17,8 @@ type Config struct {
 	Auth           AuthConfig           `mapstructure:"auth"`
 	RateLimit      RateLimitConfig      `mapstructure:"rate_limit"`
 	CircuitBreaker CircuitBreakerConfig `mapstructure:"circuit_breaker"`
-	HealthCheck    HealthCheckConfig    `mapstructure:"health_check"`
+	HealthCheck      HealthCheckConfig      `mapstructure:"health_check"`
+	QuotaReset       QuotaResetConfig       `mapstructure:"quota_reset"`
 	Billing          BillingConfig          `mapstructure:"billing"`
 	Admin            AdminConfig            `mapstructure:"admin"`
 	OutputModeration OutputModerationConfig `mapstructure:"output_moderation"`
@@ -78,6 +79,12 @@ type CircuitBreakerConfig struct {
 
 // HealthCheckConfig 控制渠道主动健康探测后台任务。
 type HealthCheckConfig struct {
+	Enabled         bool `mapstructure:"enabled"`
+	IntervalSeconds int  `mapstructure:"interval_seconds"`
+}
+
+// QuotaResetConfig 控制配额定时重置任务（周期性把余额刷回 billing.quotas 配置的初始额度）。
+type QuotaResetConfig struct {
 	Enabled         bool `mapstructure:"enabled"`
 	IntervalSeconds int  `mapstructure:"interval_seconds"`
 }
@@ -170,6 +177,7 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("circuit_breaker.threshold", 5)
 	v.SetDefault("circuit_breaker.cooldown_seconds", 30)
 	v.SetDefault("health_check.interval_seconds", 60)
+	v.SetDefault("quota_reset.interval_seconds", 86400)
 	v.SetDefault("billing.enabled", false)
 	v.SetDefault("admin.enabled", false)
 }

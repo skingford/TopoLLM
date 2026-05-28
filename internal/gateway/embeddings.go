@@ -14,26 +14,32 @@ import (
 	"github.com/kingford/TopoLLM/internal/observability"
 	"github.com/kingford/TopoLLM/internal/plugin"
 	"github.com/kingford/TopoLLM/internal/relay"
+	"github.com/kingford/TopoLLM/internal/tokenizer"
 )
 
-// Embeddings 返回 /v1/embeddings 处理器。
+// estimator 估算请求体的 prompt token 数（用于计费预扣）。
+type estimator func(body []byte, model string) int
+
+func bytesEstimator(body []byte, _ string) int { return len(body) / 4 }
+
+// Embeddings 返回 /v1/embeddings 处理器（按 input 字段精确计 token）。
 func Embeddings(d *dispatch.Dispatcher, bill *billing.Service, chain *plugin.Chain, log *zap.Logger) gin.HandlerFunc {
-	return passthrough(d, bill, chain, log, "embeddings")
+	return passthrough(d, bill, chain, log, "embeddings", tokenizer.CountEmbeddingsInput)
 }
 
-// Images 返回 /v1/images/generations 处理器。
+// Images 返回 /v1/images/generations 处理器（计费按字节估算）。
 func Images(d *dispatch.Dispatcher, bill *billing.Service, chain *plugin.Chain, log *zap.Logger) gin.HandlerFunc {
-	return passthrough(d, bill, chain, log, "images/generations")
+	return passthrough(d, bill, chain, log, "images/generations", bytesEstimator)
 }
 
-// Rerank 返回 /v1/rerank 处理器（如 SiliconFlow/Jina 风格的 OpenAI 兼容端点）。
+// Rerank 返回 /v1/rerank 处理器（计费按字节估算）。
 func Rerank(d *dispatch.Dispatcher, bill *billing.Service, chain *plugin.Chain, log *zap.Logger) gin.HandlerFunc {
-	return passthrough(d, bill, chain, log, "rerank")
+	return passthrough(d, bill, chain, log, "rerank", bytesEstimator)
 }
 
 // passthrough 构造一个非流式透传处理器：把请求按 upstreamPath 转发到支持 PathAdaptor 的渠道。
-// 复用插件前置、三阶段计费与故障转移逻辑。
-func passthrough(d *dispatch.Dispatcher, bill *billing.Service, chain *plugin.Chain, log *zap.Logger, upstreamPath string) gin.HandlerFunc {
+// 复用插件前置、三阶段计费与故障转移逻辑；prompt token 估算由 estimate 提供。
+func passthrough(d *dispatch.Dispatcher, bill *billing.Service, chain *plugin.Chain, log *zap.Logger, upstreamPath string, estimate estimator) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		body, err := io.ReadAll(c.Request.Body)
 		if err != nil {
@@ -59,7 +65,7 @@ func passthrough(d *dispatch.Dispatcher, bill *billing.Service, chain *plugin.Ch
 		}
 		body = pctx.Body
 
-		reserved, err := bill.Reserve(token, head.Model, len(body)/charsPerToken, 0)
+		reserved, err := bill.Reserve(token, head.Model, estimate(body, head.Model), 0)
 		if err != nil {
 			writeError(c, http.StatusPaymentRequired, "insufficient quota for model: "+head.Model)
 			return

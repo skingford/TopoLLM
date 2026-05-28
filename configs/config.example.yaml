@@ -42,6 +42,11 @@ health_check:
   enabled: false
   interval_seconds: 60
 
+# 配额定时重置：周期性把 billing.quotas 中各令牌的余额刷回初始值（如每日刷新）。
+quota_reset:
+  enabled: false
+  interval_seconds: 86400
+
 # 计费与配额。enabled=false 时仅记录用量、不强制配额。
 # pricing：每百万 token 价格，"default" 为兜底。quotas：每令牌总额度（缺省不限）。
 billing:

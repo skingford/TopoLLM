@@ -69,3 +69,13 @@ func (q *Quota) Balance(token string) float64 {
 	defer q.mu.Unlock()
 	return q.balances[token]
 }
+
+// Reset 把指定令牌的余额重置为 amount（仅对已跟踪的令牌生效）。
+func (q *Quota) Reset(token string, amount float64) {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	if !q.tracked[token] {
+		return
+	}
+	q.balances[token] = amount
+}
